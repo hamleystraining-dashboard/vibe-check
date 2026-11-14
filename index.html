@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Hamleys Vibe Check</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600&family=Nunito:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#fef8ec;--red:#d01d21;--gold:#f7b828;--brown:#5f280a;--green:#1a8a3c}
+*{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--brown);font-family:Nunito,system-ui,sans-serif;padding:16px 16px 40px}
+main{max-width:520px;margin:auto}h1,h2{font-family:Fredoka,system-ui,sans-serif;margin:0}h1{color:var(--red);font-size:26px;text-align:center}
+.sub{text-align:center;margin:4px 0 14px}.card{background:#fff;border:2px solid var(--gold);border-radius:16px;padding:14px;margin:12px 0}
+label{font-weight:700;display:block;margin:8px 0 4px}select{width:100%;padding:12px;border-radius:10px;border:2px solid var(--gold);font-size:16px;background:#fff;color:var(--brown)}
+.btn{display:block;width:100%;text-align:center;background:var(--red);color:#fff;border:0;border-radius:12px;padding:14px;font-family:Fredoka,sans-serif;font-size:18px;margin:8px 0}
+.btn.alt{background:var(--brown)}.btn.ghost{background:#fff;color:var(--red);border:2px solid var(--red)}.btn[disabled]{opacity:.5}
+.row{display:flex;gap:8px;align-items:center}.row input{width:22px;height:22px}
+.hint{font-size:13px;opacity:.85}#prev{width:100%;max-height:60vh;object-fit:contain;border-radius:10px;margin-top:8px}
+.score{font-family:Fredoka;font-size:44px;text-align:center;margin:4px 0}.ok{color:var(--green)}.bad{color:var(--red)}
+.bar{background:#f1e6cf;border-radius:8px;height:14px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}.bar>i.low{background:var(--red)}
+.item{margin:10px 0}.item .t{display:flex;justify-content:space-between;font-weight:700}.why{font-size:14px;color:var(--red);margin-top:2px}
+.note{background:#fff4d6;border-radius:10px;padding:10px;font-size:14px;margin-top:10px}.bear{width:84px;display:block;margin:0 auto}.hidden{display:none}
+</style></head><body><main>
+<h1>Hamleys Vibe Check</h1><p class="sub">Take a head-to-toe photo and get your grooming score.</p>
+
+<div id="consent" class="card">
+ <h2>Before you start</h2>
+ <p class="hint">PLACEHOLDER TEXT, TO BE APPROVED BY HR/LEGAL. Your photo is checked on your own phone by a program built into this page. It is <b>not uploaded or stored</b> anywhere, and you can delete it as soon as you see your score. Nothing leaves your device.</p>
+ <button class="btn" id="agree">I understand, continue</button>
+</div>
+
+<div id="app" class="hidden">
+ <div class="card">
+  <label for="role">Your designation</label>
+  <select id="role"></select>
+  <div class="row" style="margin-top:10px"><input type="checkbox" id="tag"><label for="tag" style="margin:0">My name tag is on and visible</label></div>
+  <p class="hint">Stand straight, hands at your sides, full body from head to shoes, good light.</p>
+  <label class="btn" for="cam">Take photo</label><input id="cam" type="file" accept="image/*" capture="environment" hidden>
+  <label class="btn ghost" for="up">Upload a photo</label><input id="up" type="file" accept="image/*" hidden>
+  <img id="prev" class="hidden" alt="Your photo">
+  <button class="btn" id="go" disabled>Score my photo</button>
+  <div id="status" class="hint"></div>
+ </div>
+ <div id="result" class="card hidden"></div>
+</div>
+
+<script type="module">
+import Human from './lib/human.esm.js';
+import { analyze } from './js/analyze.js';
+import { SCORED_ROLES, FAMILY, RETAIL_ROLES, PLAY_ROLES, LABELS, applies, calculate } from './js/rules.js';
+const PASS_PERCENT = 80;
+const $ = id => document.getElementById(id);
+$('role').innerHTML = '<option value="">Choose...</option>' + SCORED_ROLES.map(r => `<option>${r}</option>`).join('');
+$('agree').onclick = () => { $('consent').classList.add('hidden'); $('app').classList.remove('hidden'); };
+
+let file = null, url = null, human = null;
+const RETAKE = {
+  face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.',
+  body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.',
+  blurry: 'The photo is blurry. Hold steady and try again.'
+};
+function ready() { $('go').disabled = !(file && $('role').value); }
+function setFile(f) { clearPhoto(true); if (!f) return; file = f; url = URL.createObjectURL(f); $('prev').src = url; $('prev').classList.remove('hidden'); $('result').classList.add('hidden'); ready(); }
+function clearPhoto(keepResult) {
+  if (url) URL.revokeObjectURL(url); url = null; file = null; $('prev').removeAttribute('src'); $('prev').classList.add('hidden');
+  $('cam').value = ''; $('up').value = ''; $('go').disabled = true; if (!keepResult) $('status').textContent = '';
+}
+$('cam').onchange = e => setFile(e.target.files[0]); $('up').onchange = e => setFile(e.target.files[0]); $('role').onchange = ready;
+
+async function getHuman() {
+  if (human) return human;
+  human = new Human({ backend: 'wasm', modelBasePath: './models/', wasmPath: './wasm/', cacheSensitivity: 0, skipAllowed: false,
+    face: { enabled: true, detector: { rotation: false, maxDetected: 1, skipFrames: 0 }, mesh: { enabled: true }, iris: { enabled: false }, description: { enabled: false }, emotion: { enabled: false }, antispoof: { enabled: false }, liveness: { enabled: false } },
+    body: { enabled: true, modelPath: 'movenet-lightning.json', maxDetected: 1, skipFrames: 0 }, hand: { enabled: false }, object: { enabled: false }, gesture: { enabled: false }, filter: { enabled: false } });
+  await human.load(); return human;
+}
+async function toCanvas(f) {
+  const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+  const sc = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.(); return c;
+}
+$('go').onclick = async () => {
+  const role = $('role').value; if (!file || !role) return;
+  $('go').disabled = true; $('status').textContent = 'Checking your photo... the first time can take a few seconds.';
+  try {
+    const h = await getHuman(), c = await toCanvas(file), det = await h.detect(c), a = analyze(c, det, role);
+    c.width = c.height = 0;                                 // drop the pixels straight away
+    if (a.retake) { show(`<div class="note"><b>Please retake.</b> ${RETAKE[a.retake]} This did not use an attempt.</div>`); $('status').textContent = ''; $('go').disabled = false; return; }
+    a.criteria.name_tag = { pass: $('tag').checked, reason: 'not_visible' };
+    const r = calculate(a.criteria, role), pct = r.total / r.max * 100, pass = pct >= PASS_PERCENT - 1e-9;
+    const exp = PLAY_ROLES.includes(role) ? 'play' : 'retail', got = a.detected;
+    const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
+    show(resultHtml(role, r, pass, mismatch));
+    $('status').textContent = '';
+  } catch (e) { console.error(e); show('<div class="note">Scoring is busy. Please try again in a moment. This did not use an attempt.</div>'); $('status').textContent = ''; $('go').disabled = false; }
+};
+function resultHtml(role, r, pass, mismatch) {
+  const bars = applies(role).map(c => { const mx = r.maxes[c], sc = r.scores[c], fb = r.feedback.filter(f => f.criterion === c);
+    return `<div class="item"><div class="t"><span>${LABELS[c]}${c === 'name_tag' ? ' <small>(self-confirmed)</small>' : ''}</span><span>${sc}/${mx}</span></div><div class="bar"><i class="${sc === mx ? '' : 'low'}" style="width:${sc / mx * 100}%"></i></div>${fb.map(f => `<div class="why">${f.reason}${f.points_lost && f.points_lost < mx ? ` (-${f.points_lost})` : ''}</div>`).join('')}</div>`; }).join('');
+  return `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${r.total}/${r.max}</div>
+   <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bars}
+   ${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
+   <button class="btn alt" id="del">Delete my photo</button><button class="btn ghost ${pass ? "hidden" : ""}" id="again">Take another photo</button>
+   <p class="hint" id="delmsg"></p>`;
+}
+function show(html) {
+  const el = $('result'); el.innerHTML = html; el.classList.remove('hidden'); el.scrollIntoView({ behavior: 'smooth' });
+  const d = $('del'); if (d) d.onclick = () => { clearPhoto(true); $('delmsg').textContent = 'Photo deleted. Only your score stays on screen.'; d.disabled = true; };
+  const ag = $('again'); if (ag) ag.onclick = () => { clearPhoto(); el.classList.add('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+}
+</script></main></body></html>
