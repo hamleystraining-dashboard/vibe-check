@@ -23,14 +23,14 @@ const BOTTOM_RETAIL = { baggy: ["Jeans not tapered fit: too baggy", null],
 const BOTTOM_PLAY = { wrong_bottom: ["Wrong bottom garment for this role", null], baggy: ["Trousers not tapered fit: too baggy", null],
   other: ["Bottom does not meet the uniform standard", null] };
 const BELT = { brown: ["Belt is brown: must be black", null], not_black: ["Belt strap is clearly not black", null],
-  missing: ["Belt not visible: keep your top tucked in and hands at your sides", null], other: ["Belt does not meet the uniform standard", null] };
+  missing: ["Belt not visible: keep your hands at your sides so the belt shows", 7], other: ["Belt does not meet the uniform standard", null] };
 const NAME_TAG = { not_visible: ["Name tag not visible", null] };
 const FACE = { hair_not_tied: ["Hair not tied back", 3], hair_unkempt: ["Hair messy or out of place", 3],
   beard_neck: ["Beard on neck: trim the neckline", 3], beard_unkempt: ["Beard not neatly trimmed", 3],
   makeup_missing: ["Makeup required but not visible", 3], other: ["Grooming does not meet the standard", 3] };
 const FOOT_SHOES = { too_much_white: ["Some white or colour on the shoe: shoes should be mostly black", 3],
   half_black: ["Shoe only about half black: shoes must be mostly black", 6], not_black: ["Shoes are not black", null],
-  shoes_scuffed: ["Shoes scuffed or unpolished", 3] };
+  shoes_scuffed: ["Shoes scuffed or unpolished", 3], gliders: ["Roller gliders or attachments on the shoes are not allowed", null] };
 const FOOT_RETAIL = { ...FOOT_SHOES, socks_not_black: ["Socks not black: plain black socks required", 5],
   no_shoes: ["No shoes worn: black shoes required for this role", null], other: ["Footwear does not meet the uniform standard", null] };
 const FOOT_PAL = { socks_not_grey: ["Socks not grey: required for this role", null], no_socks: ["No socks visible", null],
@@ -43,7 +43,7 @@ export function reasonTable(d, c) {
   if (c === "name_tag") return NAME_TAG;
   if (c === "belt") return BELT;
   if (c === "bottom") return PLAY_ROLES.includes(d) ? BOTTOM_PLAY : BOTTOM_RETAIL;
-  if (c === "footwear") return d === "Play Chief" ? FOOT_CHIEF : PLAY_ROLES.includes(d) ? FOOT_PAL : FOOT_RETAIL;
+  if (c === "footwear") return PLAY_ROLES.includes(d) ? FOOT_PAL : FOOT_RETAIL;
   if (c === "face_hair") {
     const allowed = new Set(["hair_unkempt", "beard_neck", "beard_unkempt", "other"]);
     if (PLAY_ROLES.includes(d)) allowed.add("hair_not_tied");
@@ -75,5 +75,5 @@ export function calculate(criteria, d) {
     scores[c] = mx - lost; maxes[c] = mx; pass[c] = lost === 0;
   }
   const total = Object.values(scores).reduce((a, b) => a + b, 0), max = Object.values(maxes).reduce((a, b) => a + b, 0);
-  return { total, max, scores, maxes, pass, feedback };
+  return { total, max, scores, maxes, pass, feedback, topFail: applies(d).includes("top") && scores.top === 0 };
 }

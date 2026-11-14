@@ -25,7 +25,7 @@ function rgb2hsv(r, g, b) {
 }
 const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[s.length >> 1]; };
 
-export function analyze(canvas, human, designation) {
+export function analyze(canvas, human, designation, opt = {}) {
   const W = canvas.width, H = canvas.height, ctx = canvas.getContext("2d", { willReadFrequently: true });
   const data = ctx.getImageData(0, 0, W, H).data;
   const dbg = [], m = {};
@@ -45,7 +45,7 @@ export function analyze(canvas, human, designation) {
   const stat = s => ({ n: s.length, r: med(s.map(p => p[0])), g: med(s.map(p => p[1])), b: med(s.map(p => p[2])), h: med(s.map(p => p[3])), s: med(s.map(p => p[4])), v: med(s.map(p => p[5])) });
 
   // ---------------------------------------------------------------- landmarks
-  const face = human.face?.[0], body = human.body?.[0];
+  const faces = [...(human.face || [])].sort((a, b) => b.box[3] - a.box[3]), face = faces[0], body = human.body?.[0];
   const kp = {}; (body?.keypoints || []).forEach(k => { if (k) kp[k.part] = { x: k.positionRaw[0] * W, y: k.positionRaw[1] * H, s: k.score }; });  // positionRaw: Human's jitter cache can leave stale pixel positions
   const res = { criteria: {}, m, dbg, retake: null, detected: "unclear" };
 
@@ -58,6 +58,7 @@ export function analyze(canvas, human, designation) {
     for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) { const v = L[y * w + x - 1] + L[y * w + x + 1] + L[(y - 1) * w + x] + L[(y + 1) * w + x] - 4 * L[y * w + x]; s += v; s2 += v * v; n++; }
     m.blurVar = +(s2 / n - (s / n) ** 2).toFixed(1); }
   if (!face || face.box[3] / H < T.minFaceFrac) { res.retake = "face_not_clear"; return res; }
+  if (faces[1] && faces[1].box[3] >= 0.5 * face.box[3]) { res.retake = "multiple_people"; return res; }
   if (m.blurVar < T.blurVar) { res.retake = "blurry"; return res; }
   const ank = ["leftAnkle", "rightAnkle"].map(k => kp[k]).filter(k => k && k.s > 0.15);
   let fb = { x: face.box[0], y: face.box[1], w: face.box[2], h: face.box[3] };
@@ -92,7 +93,10 @@ export function analyze(canvas, human, designation) {
     if (black > 0.45) detected = "polo"; else if (grey > 0.35) detected = (red > 0.04 ? "dungaree" : "blazer"); else if (red > 0.45) detected = "dungaree";
     res.detected = detected;
     let pass = true, reason = "";
-    if (roleFamily === "retail") { if (black < 0.45) { pass = false; reason = "wrong_top"; } }
+    if (roleFamily === "retail") {
+      const redPolo = (designation === "Fun Consultant" || designation === "Section Supervisor") && red > 0.40;      // red Hamleys T-shirt: approved for these two roles
+      if (redPolo) res.detected = "polo";
+      else if (black < 0.45) { pass = false; reason = "wrong_top"; } }
     else if (roleFamily === "dungaree") { const rr = region(shX - shW * 0.5, shY + 0.1 * bu, shX + shW * 0.5, shY + 0.7 * bu, "tee", "#f80"); const s2 = sample(rr);
       const rd = s2.filter(p => (p[3] < 22 || p[3] > 338) && p[4] > 0.45 && p[5] > 0.3).length / s2.length; m.top.tee = +rd.toFixed(2); if (rd < 0.08 || grey < 0.2) { pass = false; reason = "wrong_top"; } }
     else { if (grey < 0.25 && red < 0.08) { pass = false; reason = "wrong_top"; } }
@@ -128,6 +132,24 @@ export function analyze(canvas, human, designation) {
       }
       return best;
     };
+    // per-leg width measured along each leg (hip -> knee -> ankle keypoints), edge to edge from the leg centre; used for "baggy below the knee"
+    {
+      const legPts = side => { const hip = side === "l" ? kp.leftHip : kp.rightHip, kn = side === "l" ? kp.leftKnee : kp.rightKnee, an = side === "l" ? kp.leftAnkle : kp.rightAnkle;
+        const kk = kn && kn.s > 0.15 ? kn : { x: (hip.x + legX(side, 1)) / 2, y: (hip.y + ankY) / 2 }; const aa = an && an.s > 0.15 ? an : { x: legX(side, 1), y: ankY }; return { hip, kk, aa }; };
+      const widthAt = (side, y) => {
+        const { hip, kk, aa } = legPts(side); let cx; if (y < kk.y) cx = hip.x + (kk.x - hip.x) * ((y - hip.y) / Math.max(1, kk.y - hip.y)); else cx = kk.x + (aa.x - kk.x) * ((y - kk.y) / Math.max(1, aa.y - kk.y));
+        const other = side === "l" ? legPts("r") : legPts("l"); let ox; { const q = other; if (y < q.kk.y) ox = q.hip.x + (q.kk.x - q.hip.x) * ((y - q.hip.y) / Math.max(1, q.kk.y - q.hip.y)); else ox = q.kk.x + (q.aa.x - q.kk.x) * ((y - q.kk.y) / Math.max(1, q.aa.y - q.kk.y)); }
+        const ref = [0, 0, 0]; { let n = 0; for (let dx = -3; dx <= 3; dx += 3) for (let dy = -3; dy <= 3; dy += 3) { const c = px(cx + dx, y + dy); ref[0] += c[0]; ref[1] += c[1]; ref[2] += c[2]; n++; } ref[0] /= n; ref[1] /= n; ref[2] /= n; }
+        const tol = 38 + 0.3 * Math.hypot(...ref), lim = Math.abs(ox - cx) / 2 || shW * 0.6, maxd = Math.min(lim, shW * 0.9);
+        const go = dir => { let d = 0, bad = 0; for (let t = 2; t <= maxd; t += 2) { const c = px(cx + dir * t, y); if (Math.hypot(c[0] - ref[0], c[1] - ref[1], c[2] - ref[2]) > tol) { bad++; if (bad >= 2) break; } else { d = t; bad = 0; } } return d; };
+        return go(-1) + go(1);
+      };
+      const lA = legPts("l"), rA = legPts("r"), kneeY = (lA.kk.y + rA.kk.y) / 2, shinY = kneeY + (ankY - kneeY) * 0.62, thighY = hipY + (kneeY - hipY) * 0.55;
+      const avg = y => { let a = 0, n = 0; for (const sd of ["l", "r"]) for (const yy of [y - 6, y, y + 6]) { a += widthAt(sd, yy); n++; } return a / n; };
+      const thighLeg = avg(thighY), shinLeg = avg(shinY);
+      m.bottom.legThigh = +(thighLeg / shW).toFixed(2); m.bottom.legShin = +(shinLeg / shW).toFixed(2); m.bottom.legRatio = +(shinLeg / Math.max(1, thighLeg)).toFixed(2);
+      dbg.push({ x0: lA.kk.x - shinLeg / 2, y0: shinY, x1: lA.kk.x + shinLeg / 2, y1: shinY + 3, label: "shinLeg", color: "#0ff" });
+    }
     const th = spanAt(0.35), sn = spanAt(0.85);
     m.bottom.thighW = Math.round(th.w); m.bottom.shinW = Math.round(sn.w); m.bottom.shinOverThigh = +(sn.w / Math.max(th.w, 1)).toFixed(2);
     m.bottom.shinOverShoulder = +(sn.w / shW).toFixed(2); m.bottom.thighOverShoulder = +(th.w / shW).toFixed(2);
@@ -137,10 +159,10 @@ export function analyze(canvas, human, designation) {
     m.bottom.blue = blue;
     if (roleFamily === "retail") {
       // dark navy that photographs near-black passes (benefit of the doubt); a clearly neutral/warm black or other colour fails
-      if (warmBlack && bV > 0.45) { pass = false; reason = "wrong_bottom"; }
-      else if (warmBlack) { pass = false; reason = "black_trousers"; }
-      else if (blue && bV > 0.72 && bS < 0.3) { pass = false; reason = "faded"; }
-      else if (m.bottom.shinOverThigh > T.baggyRatio && m.bottom.shinOverThigh < 1.15 && m.bottom.shinOverShoulder > T.baggyWide && m.bottom.shinOverShoulder < 1.1) { pass = false; reason = "baggy"; }
+      if (bB < -20 && bV > 0.45) { pass = false; reason = "wrong_bottom"; }
+      else if (bB < -20) { pass = false; reason = "black_trousers"; }      // only clearly neutral/warm black; dark navy that photographs black passes
+      else if (blue && bV > 0.86 && bS < 0.22) { pass = false; reason = "faded"; }      // very light fade is fine; only nearly white denim fails
+      else if (m.bottom.legThigh <= 0.55 && ((m.bottom.legShin >= 0.40 && m.bottom.legRatio >= 0.84) || (m.bottom.legShin >= 0.34 && m.bottom.legThigh >= 0.47 && m.bottom.legThigh <= 0.505 && m.bottom.legRatio >= 0.70))) { pass = false; reason = "baggy"; }      // wide below the knee (wide-leg / straight-baggy); tapering jeans pass
     } else {
       const grey = st.s < 0.38 && st.v > 0.25 && st.v < 0.85 && !(bB > 8);
       if (!grey) { pass = false; reason = "wrong_bottom"; }
@@ -154,7 +176,9 @@ export function analyze(canvas, human, designation) {
     const s = sample(r, 2);
     const brown = s.filter(p => p[3] > 8 && p[3] < 38 && p[4] > 0.40 && p[5] > 0.15 && p[5] < 0.50).length / s.length;
     m.belt = { brown: +brown.toFixed(3) };
-    res.criteria.belt = brown > 0.08 ? { pass: false, reason: "brown" } : { pass: true, reason: "" };
+    const mid = sample(region(hipX - hipW * 0.5, hipY - 0.45 * bu, hipX + hipW * 0.5, hipY + 0.05 * bu, "beltMid", "#fc0"), 2);
+    const skinPx = mid.filter(p => p[3] >= 5 && p[3] <= 38 && p[4] >= 0.18 && p[4] <= 0.75 && p[5] >= 0.30).length / mid.length; m.belt.skin = +skinPx.toFixed(2);
+    res.criteria.belt = brown > 0.08 ? { pass: false, reason: "brown" } : skinPx > 0.22 ? { pass: false, reason: "missing" } : { pass: true, reason: "" };
   }
 
   // ---------------------------------------------------------------- FOOTWEAR
@@ -195,10 +219,13 @@ export function analyze(canvas, human, designation) {
     if (roleFamily === "retail") {
       if (!hasShoes) { pass = false; reason = darkArea > 0.01 ? "not_black" : "no_shoes"; }
       else { const g = shoeGrade(); if (g) { pass = false; reason = g; } }
-    } else if (roleFamily === "dungaree") {
+    } else {      // Play Pal, Play Wiz and Play Chief: grey socks only, no shoes
       if (hasShoes) { pass = false; reason = "shoes_not_allowed"; } else { const g = sockGrade(); if (g) { pass = false; reason = g; } }
-    } else {
-      if (hasShoes) { const g = shoeGrade(); if (g) { pass = false; reason = g; } } else { const g = sockGrade(); if (g) { pass = false; reason = g; } }
+    }
+    if (roleFamily === "retail" && pass) {      // roller gliders or other bright attachments strapped to the shoes
+      let rr = []; for (const ax of xs) rr = rr.concat(sample(region(ax - 0.5 * bu, ankY - 0.1 * bu, ax + 0.5 * bu, ankY + 0.6 * bu, "glider", "#f00"), 2));
+      const redPx = rr.filter(p => (p[3] < 20 || p[3] > 340) && p[4] > 0.55 && p[5] > 0.40).length / rr.length; m.foot.red = +redPx.toFixed(3);
+      if (redPx > 0.05) { pass = false; reason = "gliders"; }
     }
     res.criteria.footwear = { pass, reason };
   }
@@ -232,7 +259,7 @@ export function analyze(canvas, human, designation) {
     }
     m.face.hairW = widths.map(w => +w.toFixed(2)); m.face.turban = turban;
     const hairW = Math.max(...widths);
-    if (!turban && hairW > T.hairVolume) reasons.push("hair_unkempt");
+    if (!turban && !opt.female && hairW > T.hairVolume) reasons.push("hair_unkempt");
     const lowFace = sample(region(fb.x + fb.w * 0.25, fb.y + fb.h * 0.62, fb.x + fb.w * 0.75, fb.y + fb.h * 0.95, "lowface", "#f33"), 2);
     const facialHair = lowFace.filter(p => p[5] < 0.30).length / lowFace.length; m.face.facialHair = +facialHair.toFixed(2);
     if (facialHair > 0.30 && beardBelow > T.beardNeck) reasons.push("beard_neck");
@@ -240,6 +267,36 @@ export function analyze(canvas, human, designation) {
   }
 
   // ---------------------------------------------------------------- name tag: confirmed by the person (never scored from pixels)
-  res.criteria.name_tag = { pass: true, reason: "" };
+  // ---------------------------------------------------------------- NAME TAG: a small red or white badge on the chest (either side)
+  {
+    const x0 = Math.round(shX - shW * 0.46), x1 = Math.round(shX + shW * 0.46), y0 = Math.round(shY + 0.05 * bu), y1 = Math.round(hipY - 0.25 * bu), st = 2;
+    region(x0, y0, x1, y1, "tag zone", "#fa0");
+    const gw = Math.ceil((x1 - x0) / st), gh = Math.ceil((y1 - y0) / st), mask = new Uint8Array(gw * gh);
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) { const [R, G, B] = px(x0 + i * st, y0 + j * st), [h, sa, v] = rgb2hsv(R, G, B);
+      const red = (h < 24 || h > 336) && sa > 0.42 && v > 0.36, white = sa < 0.22 && v > 0.78;
+      mask[j * gw + i] = red ? 1 : white ? 2 : 0; }
+    const seen = new Uint8Array(gw * gh); let best = null;
+    for (let k = 0; k < mask.length; k++) { if (!mask[k] || seen[k]) continue;
+      const kind = mask[k], q = [k]; seen[k] = 1; let n = 0, mnx = 1e9, mxx = -1, mny = 1e9, mxy = -1;
+      while (q.length) { const c = q.pop(), cx = c % gw, cy = (c / gw) | 0; n++; mnx = Math.min(mnx, cx); mxx = Math.max(mxx, cx); mny = Math.min(mny, cy); mxy = Math.max(mxy, cy);
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]]) { const nx = cx + dx, ny = cy + dy; if (nx < 0 || ny < 0 || nx >= gw || ny >= gh) continue; const nk = ny * gw + nx; if (mask[nk] === kind && !seen[nk]) { seen[nk] = 1; q.push(nk); } } }
+      const w = (mxx - mnx + 1) * st, h = (mxy - mny + 1) * st, fill = n * st * st / (w * h);
+      if (n > 8) (m.tagDbg = m.tagDbg || []).push({ k: kind, n, w, h, fill: +fill.toFixed(2), x: x0 + mnx * st, y: y0 + mny * st });
+      if (w >= 0.07 * shW && w <= 0.65 * shW && h >= 0.035 * shW && h <= 0.45 * shW && fill > 0.35 && w / h > 0.6 && w / h < 5) {
+        // the badge must sit on the garment: its surroundings (a ring around it) must be dark for a black polo, and never the same colour as the badge
+        let ringN = 0, ringOk = 0, ringRed = 0; const bx0 = x0 + mnx * st, by0 = y0 + mny * st, pad = Math.max(6, 0.35 * Math.min(w, h));
+        for (let yy = by0 - pad; yy <= by0 + h + pad; yy += 3) for (let xx = bx0 - pad; xx <= bx0 + w + pad; xx += 3) { if (xx >= bx0 - 1 && xx <= bx0 + w + 1 && yy >= by0 - 1 && yy <= by0 + h + 1) continue; const [R, G, B] = px(xx, yy), [hh, sa, v] = rgb2hsv(R, G, B); ringN++;
+          const isRed = (hh < 24 || hh > 336) && sa > 0.42 && v > 0.36; if (isRed) ringRed++;
+          const sameKind = kind === 1 ? isRed : (sa < 0.22 && v > 0.78);
+          if (!sameKind && (roleFamily !== "retail" || v < 0.45 || isRed)) ringOk++; }
+        if (ringN < 12 || ringOk / ringN < 0.7) continue;
+        if (kind === 2 && ringRed / ringN < 0.12) continue;      // a white strip must sit on a red card
+        // a real name tag is a red card with a white name strip: both colours must be present together (the embroidered logo is red only)
+        let bn = 0, br = 0, bw = 0; for (let yy = by0 - 3; yy <= by0 + h + 3; yy += 2) for (let xx = bx0 - 8; xx <= bx0 + w + 8; xx += 2) { const [R, G, B] = px(xx, yy), [hh, sa, v] = rgb2hsv(R, G, B); bn++; if ((hh < 22 || hh > 338) && sa > 0.45 && v > 0.35) br++; else if (sa < 0.28 && v > 0.70) bw++; }
+        const compact = w / h > 0.6 && w / h < 1.9 && fill >= 0.5;
+        if (!(br / bn >= 0.12 && bw / bn >= 0.07) && !compact) continue; if (!best || n > best.n) best = { kind: kind === 1 ? "red" : "white", n, w: Math.round(w), h: Math.round(h), fill: +fill.toFixed(2), x0: x0 + mnx * st, y0: y0 + mny * st }; } }
+    m.tag = best || { none: true };
+    res.criteria.name_tag = best ? { pass: true, reason: "" } : { pass: false, reason: "not_visible" };
+  }
   return res;
 }

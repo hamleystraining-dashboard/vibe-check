@@ -41,6 +41,7 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
  <label for="store">Your store</label><div class="combo"><input type="text" id="store" placeholder="Tap and type, e.g. PHOE" autocomplete="off" autocapitalize="none" spellcheck="false"><div id="storeList" class="list hidden"></div></div>
  <label for="pname">Your name</label><input type="text" id="pname" autocomplete="name" placeholder="As on your name tag">
  <label for="role">Your designation</label><select id="role"></select>
+ <label for="gender">Hair rule that applies to you</label><select id="gender"><option value="">Choose...</option><option value="F">Female team member</option><option value="M">Male team member</option></select>
  <button class="btn" id="setupGo">Continue</button><div id="setupErr" class="why"></div>
 </div>
 
@@ -51,7 +52,7 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
  </div>
 
  <div id="cap" class="card">
-  <div class="row"><input type="checkbox" id="tag"><label for="tag" style="margin:0">My name tag is on and visible</label></div>
+  <p class="hint" style="margin:6px 0">Wear your name tag on your chest so it shows in the photo.</p>
   <p class="hint">Ask a colleague to take your photo with the back camera: standing straight, hands at your sides, full body from head to shoes, good light.</p>
   <button class="btn" id="openCam">Open camera</button>
   <div id="fallback" class="hidden">
@@ -76,7 +77,7 @@ import { profile, consent, day, headcount, todayIST } from './js/db.js';
 import { STORES } from './data_stores.js';
 const PASS_PERCENT = 80, MAX_ATTEMPTS = 3;
 const $ = id => document.getElementById(id), show = (id, on = true) => $(id).classList.toggle('hidden', !on);
-const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.' };
+const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.', multiple_people: 'Only one person should be in the photo. Please take your own photo and try again.' };
 
 let pickedStore = null;
 const storeLabel = s => `${s.name} (${s.code})`;
@@ -99,11 +100,12 @@ function start() {
 $('agree').onclick = () => { consent.set(); start(); };
 $('setupGo').onclick = () => {
   const store = pickedStore || STORES.find(s => storeLabel(s) === $('store').value.trim() || s.code === $('store').value.trim().toUpperCase());
-  const name = $('pname').value.trim(), role = $('role').value;
+  const name = $('pname').value.trim(), role = $('role').value, gender = $('gender').value;
   if (!store) { $('setupErr').textContent = 'Please pick your store from the list.'; return; }
   if (name.length < 2) { $('setupErr').textContent = 'Please enter your name.'; return; }
   if (!role) { $('setupErr').textContent = 'Please choose your designation.'; return; }
-  me = { store: store.code, storeName: store.name, name, role }; profile.set(me); $('setupErr').textContent = ''; start();
+  if (!gender) { $('setupErr').textContent = 'Please choose one option for the hair rule.'; return; }
+  me = { store: store.code, storeName: store.name, name, role, gender }; profile.set(me); $('setupErr').textContent = ''; start();
 };
 $('change').onclick = () => { stopCam(); me = null; profile.set(null); $('result').classList.add('hidden'); $('hc').classList.add('hidden'); start(); };
 
@@ -158,7 +160,7 @@ function clearStill() { const s = $('still'); s.width = s.height = 0; show('stil
 async function getHuman() {
   if (human) return human;
   human = new Human({ backend: 'wasm', modelBasePath: './models/', wasmPath: './wasm/', cacheSensitivity: 0, skipAllowed: false,
-    face: { enabled: true, detector: { rotation: false, maxDetected: 1, skipFrames: 0 }, mesh: { enabled: true }, iris: { enabled: false }, description: { enabled: false }, emotion: { enabled: false }, antispoof: { enabled: false }, liveness: { enabled: false } },
+    face: { enabled: true, detector: { rotation: false, maxDetected: 3, skipFrames: 0 }, mesh: { enabled: true }, iris: { enabled: false }, description: { enabled: false }, emotion: { enabled: false }, antispoof: { enabled: false }, liveness: { enabled: false } },
     body: { enabled: true, modelPath: 'movenet-lightning.json', maxDetected: 1, skipFrames: 0 }, hand: { enabled: false }, object: { enabled: false }, gesture: { enabled: false }, filter: { enabled: false } });
   await human.load(); return human;
 }
@@ -167,10 +169,9 @@ async function scorePhoto(c) {
   const s = $('still'); s.width = c.width; s.height = c.height; s.getContext('2d').drawImage(c, 0, 0); show('still');
   $('status').textContent = 'Checking your photo...'; $('result').classList.add('hidden');
   try {
-    const h = await getHuman(), det = await h.detect(c), a = analyze(c, det, me.role); c.width = c.height = 0;
+    const h = await getHuman(), det = await h.detect(c), a = analyze(c, det, me.role, { female: me.gender === 'F' }); c.width = c.height = 0;
     if (a.retake) { $('status').textContent = ''; showRetake(RETAKE[a.retake]); return; }
-    a.criteria.name_tag = { pass: $('tag').checked, reason: 'not_visible' };
-    const r = calculate(a.criteria, me.role), pct = r.total / r.max * 100;
+    const r = calculate(a.criteria, me.role); let pct = r.total / r.max * 100; if (r.topFail) pct = Math.min(pct, PASS_PERCENT - 0.01);     // wrong top = cannot pass
     const exp = PLAY_ROLES.includes(me.role) ? 'play' : 'retail', got = a.detected;
     const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
     const att = { total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
@@ -185,12 +186,12 @@ function showRetake(msg) {
 function showResult(att, d, lockedNoMore, r, mismatch) {
   const pass = att.pct >= PASS_PERCENT - 1e-9, used = d.attempts.length, left = MAX_ATTEMPTS - used;
   const bars = r ? applies(me.role).map(c => { const mx = r.maxes[c], sc = r.scores[c], fb = r.feedback.filter(f => f.criterion === c);
-    return `<div class="item"><div class="t"><span>${LABELS[c]}${c === 'name_tag' ? ' <small>(self-confirmed)</small>' : ''}</span><span>${sc}/${mx}</span></div><div class="bar"><i class="${sc === mx ? '' : 'low'}" style="width:${sc / mx * 100}%"></i></div>${fb.map(f => `<div class="why">${f.reason}${f.points_lost && f.points_lost < mx ? ` (-${f.points_lost})` : ''}</div>`).join('')}</div>`; }).join('') : '';
+    return `<div class="item"><div class="t"><span>${LABELS[c]}</span><span>${sc}/${mx}</span></div><div class="bar"><i class="${sc === mx ? '' : 'low'}" style="width:${sc / mx * 100}%"></i></div>${fb.map(f => `<div class="why">${f.reason}${f.points_lost && f.points_lost < mx ? ` (-${f.points_lost})` : ''}</div>`).join('')}</div>`; }).join('') : '';
   const bestLine = d.best && d.best.pct > att.pct ? `<p class="hint" style="text-align:center">Your best today so far: ${d.best.total}/${d.best.max}</p>` : '';
   $('attemptPill').textContent = `Attempt ${used} of ${MAX_ATTEMPTS} used`;
   show('result'); $('result').innerHTML = `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${att.total}/${att.max}</div>
    <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bestLine}${bars}
-   ${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
+   ${r && r.topFail ? '<div class="note">Your top does not match the uniform for your role, so this cannot be a pass. Please fix it and try again.</div>' : ''}${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
    ${!pass && left > 0 && !lockedNoMore ? `<button class="btn ghost" id="retry">Try again (${left} left today)</button>` : ''}
    ${!pass && left <= 0 ? '<div class="note">You have used all 3 attempts for today.</div>' : ''}
    <button class="btn green" id="done">Done for the day</button>
