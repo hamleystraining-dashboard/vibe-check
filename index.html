@@ -6,63 +6,130 @@
 <style>
 :root{--cream:#fef8ec;--red:#d01d21;--gold:#f7b828;--brown:#5f280a;--green:#1a8a3c}
 *{box-sizing:border-box}body{margin:0;background:var(--cream);color:var(--brown);font-family:Nunito,system-ui,sans-serif;padding:16px 16px 40px}
-main{max-width:520px;margin:auto}h1,h2{font-family:Fredoka,system-ui,sans-serif;margin:0}h1{color:var(--red);font-size:26px;text-align:center}
+main{max-width:520px;margin:auto}h1,h2{font-family:Fredoka,system-ui,sans-serif;margin:0}h1{color:var(--red);font-size:26px;text-align:center}h2{font-size:20px;margin-bottom:6px}
 .sub{text-align:center;margin:4px 0 14px}.card{background:#fff;border:2px solid var(--gold);border-radius:16px;padding:14px;margin:12px 0}
-label{font-weight:700;display:block;margin:8px 0 4px}select{width:100%;padding:12px;border-radius:10px;border:2px solid var(--gold);font-size:16px;background:#fff;color:var(--brown)}
+label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{width:100%;padding:12px;border-radius:10px;border:2px solid var(--gold);font-size:16px;background:#fff;color:var(--brown)}
 .btn{display:block;width:100%;text-align:center;background:var(--red);color:#fff;border:0;border-radius:12px;padding:14px;font-family:Fredoka,sans-serif;font-size:18px;margin:8px 0}
-.btn.alt{background:var(--brown)}.btn.ghost{background:#fff;color:var(--red);border:2px solid var(--red)}.btn[disabled]{opacity:.5}
-.row{display:flex;gap:8px;align-items:center}.row input{width:22px;height:22px}
-.hint{font-size:13px;opacity:.85}#prev{width:100%;max-height:60vh;object-fit:contain;border-radius:10px;margin-top:8px}
+.btn.alt{background:var(--brown)}.btn.ghost{background:#fff;color:var(--red);border:2px solid var(--red)}.btn.green{background:var(--green)}.btn[disabled]{opacity:.5}
+.row{display:flex;gap:8px;align-items:center}.row input[type=checkbox]{width:22px;height:22px}
+.hint{font-size:13px;opacity:.85}video,#still{width:100%;max-height:62vh;object-fit:contain;border-radius:10px;margin-top:8px;background:#000}
 .score{font-family:Fredoka;font-size:44px;text-align:center;margin:4px 0}.ok{color:var(--green)}.bad{color:var(--red)}
 .bar{background:#f1e6cf;border-radius:8px;height:14px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}.bar>i.low{background:var(--red)}
 .item{margin:10px 0}.item .t{display:flex;justify-content:space-between;font-weight:700}.why{font-size:14px;color:var(--red);margin-top:2px}
-.note{background:#fff4d6;border-radius:10px;padding:10px;font-size:14px;margin-top:10px}.bear{width:84px;display:block;margin:0 auto}.hidden{display:none}
+.note{background:#fff4d6;border-radius:10px;padding:10px;font-size:14px;margin-top:10px}.bear{width:84px;display:block;margin:0 auto}.hidden{display:none!important}
+.pill{display:inline-block;background:#fff4d6;border-radius:99px;padding:4px 10px;font-size:13px;font-weight:700}.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.stepper{display:flex;align-items:center;justify-content:center;gap:18px;margin:10px 0}.stepper button{width:52px;height:52px;border-radius:50%;border:2px solid var(--red);background:#fff;color:var(--red);font-size:28px}
+.stepper b{font-family:Fredoka;font-size:38px;min-width:64px;text-align:center}a.lnk{color:var(--red);font-size:13px;font-weight:700;background:none;border:0;padding:0}
 </style></head><body><main>
 <h1>Hamleys Vibe Check</h1><p class="sub">Take a head-to-toe photo and get your grooming score.</p>
 
-<div id="consent" class="card">
+<div id="consent" class="card hidden">
  <h2>Before you start</h2>
- <p class="hint">PLACEHOLDER TEXT, TO BE APPROVED BY HR/LEGAL. Your photo is checked on your own phone by a program built into this page. It is <b>not uploaded or stored</b> anywhere, and you can delete it as soon as you see your score. Nothing leaves your device.</p>
+ <p class="hint">PLACEHOLDER TEXT, TO BE APPROVED BY HR/LEGAL. Your photo is checked on your own phone by a program built into this page. It is <b>not uploaded or stored</b> anywhere and you can delete it as soon as you see your score. Only your score, name, store and designation are saved.</p>
  <button class="btn" id="agree">I understand, continue</button>
+</div>
+
+<div id="setup" class="card hidden">
+ <h2>Who are you?</h2>
+ <label for="store">Your store</label><input type="text" id="store" list="stores" placeholder="Start typing your store name" autocomplete="off"><datalist id="stores"></datalist>
+ <label for="pname">Your name</label><input type="text" id="pname" autocomplete="name" placeholder="As on your name tag">
+ <label for="role">Your designation</label><select id="role"></select>
+ <button class="btn" id="setupGo">Continue</button><div id="setupErr" class="why"></div>
 </div>
 
 <div id="app" class="hidden">
  <div class="card">
-  <label for="role">Your designation</label>
-  <select id="role"></select>
-  <div class="row" style="margin-top:10px"><input type="checkbox" id="tag"><label for="tag" style="margin:0">My name tag is on and visible</label></div>
-  <p class="hint">Stand straight, hands at your sides, full body from head to shoes, good light.</p>
-  <label class="btn" for="cam">Take photo</label><input id="cam" type="file" accept="image/*" capture="environment" hidden>
-  <label class="btn ghost" for="up">Upload a photo</label><input id="up" type="file" accept="image/*" hidden>
-  <img id="prev" class="hidden" alt="Your photo">
-  <button class="btn" id="go" disabled>Score my photo</button>
+  <div class="top"><div><b id="who"></b><div class="hint" id="whoSub"></div></div><button class="lnk" id="change">Change</button></div>
+  <div style="margin-top:8px"><span class="pill" id="attemptPill"></span></div>
+ </div>
+
+ <div id="cap" class="card">
+  <div class="row"><input type="checkbox" id="tag"><label for="tag" style="margin:0">My name tag is on and visible</label></div>
+  <p class="hint">Ask a colleague to take your photo with the back camera: standing straight, hands at your sides, full body from head to shoes, good light.</p>
+  <button class="btn" id="openCam">Open camera</button>
+  <video id="video" playsinline muted class="hidden"></video>
+  <button class="btn green hidden" id="snap">Take the photo</button>
+  <div id="fallback" class="hidden">
+   <p class="hint">Live camera is not available here, so your phone camera app will open instead.</p>
+   <label class="btn" for="camIn">Open phone camera</label><input id="camIn" type="file" accept="image/*" capture="environment" hidden>
+  </div>
+  <canvas id="still" class="hidden"></canvas>
   <div id="status" class="hint"></div>
  </div>
+
  <div id="result" class="card hidden"></div>
+ <div id="hc" class="card hidden"></div>
 </div>
 
 <script type="module">
 import Human from './lib/human.esm.js';
 import { analyze } from './js/analyze.js';
-import { SCORED_ROLES, FAMILY, RETAIL_ROLES, PLAY_ROLES, LABELS, applies, calculate } from './js/rules.js';
-const PASS_PERCENT = 80;
-const $ = id => document.getElementById(id);
-$('role').innerHTML = '<option value="">Choose...</option>' + SCORED_ROLES.map(r => `<option>${r}</option>`).join('');
-$('agree').onclick = () => { $('consent').classList.add('hidden'); $('app').classList.remove('hidden'); };
+import { SCORED_ROLES, PLAY_ROLES, LABELS, applies, calculate } from './js/rules.js';
+import { profile, consent, day, headcount, todayIST } from './js/db.js';
+import { STORES } from './data_stores.js';
+const PASS_PERCENT = 80, MAX_ATTEMPTS = 3;
+const $ = id => document.getElementById(id), show = (id, on = true) => $(id).classList.toggle('hidden', !on);
+const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.' };
 
-let file = null, url = null, human = null;
-const RETAKE = {
-  face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.',
-  body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.',
-  blurry: 'The photo is blurry. Hold steady and try again.'
-};
-function ready() { $('go').disabled = !(file && $('role').value); }
-function setFile(f) { clearPhoto(true); if (!f) return; file = f; url = URL.createObjectURL(f); $('prev').src = url; $('prev').classList.remove('hidden'); $('result').classList.add('hidden'); ready(); }
-function clearPhoto(keepResult) {
-  if (url) URL.revokeObjectURL(url); url = null; file = null; $('prev').removeAttribute('src'); $('prev').classList.add('hidden');
-  $('cam').value = ''; $('up').value = ''; $('go').disabled = true; if (!keepResult) $('status').textContent = '';
+$('stores').innerHTML = STORES.map(s => `<option value="${s.name.replace(/"/g, '&quot;')} (${s.code})"></option>`).join('');
+$('role').innerHTML = '<option value="">Choose...</option>' + SCORED_ROLES.map(r => `<option>${r}</option>`).join('');
+let me = profile.get(), stream = null, human = null;
+
+function start() {
+  show('consent', !consent.get()); show('setup', consent.get() && !me); show('app', consent.get() && !!me);
+  if (consent.get() && me) renderToday();
 }
-$('cam').onchange = e => setFile(e.target.files[0]); $('up').onchange = e => setFile(e.target.files[0]); $('role').onchange = ready;
+$('agree').onclick = () => { consent.set(); start(); };
+$('setupGo').onclick = () => {
+  const store = STORES.find(s => `${s.name} (${s.code})` === $('store').value.trim() || s.code === $('store').value.trim().toUpperCase());
+  const name = $('pname').value.trim(), role = $('role').value;
+  if (!store) { $('setupErr').textContent = 'Please pick your store from the list.'; return; }
+  if (name.length < 2) { $('setupErr').textContent = 'Please enter your name.'; return; }
+  if (!role) { $('setupErr').textContent = 'Please choose your designation.'; return; }
+  me = { store: store.code, storeName: store.name, name, role }; profile.set(me); $('setupErr').textContent = ''; start();
+};
+$('change').onclick = () => { stopCam(); me = null; profile.set(null); $('result').classList.add('hidden'); $('hc').classList.add('hidden'); start(); };
+
+function renderToday() {
+  const d = day.get(me.store, me.name);
+  $('who').textContent = me.name; $('whoSub').textContent = `${me.role} · ${me.storeName}`;
+  $('result').classList.add('hidden'); $('hc').classList.add('hidden'); clearStill();
+  if (d.done) { showDone(d); return; }
+  const used = d.attempts.length;
+  $('attemptPill').textContent = used ? `Attempt ${Math.min(used + 1, MAX_ATTEMPTS)} of ${MAX_ATTEMPTS}` : `Attempt 1 of ${MAX_ATTEMPTS}`;
+  show('cap', true); show('openCam', true); show('snap', false); show('video', false); show('fallback', false);
+  if (used >= MAX_ATTEMPTS) { show('cap', false); showResult(d.best, d, true); }
+}
+function showDone(d) {
+  show('cap', false); $('attemptPill').textContent = 'Done for today';
+  const b = d.best; show('result', true);
+  $('result').innerHTML = `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${b.pct >= PASS_PERCENT ? 'ok' : 'bad'}">${b.total}/${b.max}</div><p style="text-align:center;margin:0"><b>You're done for today.</b> Your best score is saved. See you tomorrow!</p>`;
+  renderHeadcount();
+}
+
+// ---------------------------------------------------------------- camera (live camera only: no gallery, no file picking)
+function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $('video').srcObject = null; }
+$('openCam').onclick = async () => {
+  $('status').textContent = '';
+  if (!navigator.mediaDevices?.getUserMedia) { show('openCam', false); show('fallback', true); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: false });
+    const v = $('video'); v.srcObject = stream; await v.play(); show('video'); show('snap'); show('openCam', false); clearStill();
+    getHuman().catch(() => {});     // warm up the models while they line up the shot
+  } catch (e) { $('status').textContent = 'Camera permission was blocked. Allow the camera for this page and try again.'; show('openCam', false); show('fallback', true); }
+};
+$('snap').onclick = async () => {
+  const v = $('video'); if (!v.videoWidth) return;
+  const c = document.createElement('canvas'), sc = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
+  c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  stopCam(); show('video', false); show('snap', false); await scorePhoto(c);
+};
+$('camIn').onchange = async e => {      // fallback: the phone's camera app (the browser may still offer the gallery on some phones)
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' }), sc = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.(); await scorePhoto(c);
+};
+function clearStill() { const s = $('still'); s.width = s.height = 0; show('still', false); }
 
 async function getHuman() {
   if (human) return human;
@@ -71,38 +138,55 @@ async function getHuman() {
     body: { enabled: true, modelPath: 'movenet-lightning.json', maxDetected: 1, skipFrames: 0 }, hand: { enabled: false }, object: { enabled: false }, gesture: { enabled: false }, filter: { enabled: false } });
   await human.load(); return human;
 }
-async function toCanvas(f) {
-  const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
-  const sc = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
-  c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.(); return c;
-}
-$('go').onclick = async () => {
-  const role = $('role').value; if (!file || !role) return;
-  $('go').disabled = true; $('status').textContent = 'Checking your photo... the first time can take a few seconds.';
+
+async function scorePhoto(c) {
+  const s = $('still'); s.width = c.width; s.height = c.height; s.getContext('2d').drawImage(c, 0, 0); show('still');
+  $('status').textContent = 'Checking your photo...'; $('result').classList.add('hidden');
   try {
-    const h = await getHuman(), c = await toCanvas(file), det = await h.detect(c), a = analyze(c, det, role);
-    c.width = c.height = 0;                                 // drop the pixels straight away
-    if (a.retake) { show(`<div class="note"><b>Please retake.</b> ${RETAKE[a.retake]} This did not use an attempt.</div>`); $('status').textContent = ''; $('go').disabled = false; return; }
+    const h = await getHuman(), det = await h.detect(c), a = analyze(c, det, me.role); c.width = c.height = 0;
+    if (a.retake) { $('status').textContent = ''; showRetake(RETAKE[a.retake]); return; }
     a.criteria.name_tag = { pass: $('tag').checked, reason: 'not_visible' };
-    const r = calculate(a.criteria, role), pct = r.total / r.max * 100, pass = pct >= PASS_PERCENT - 1e-9;
-    const exp = PLAY_ROLES.includes(role) ? 'play' : 'retail', got = a.detected;
+    const r = calculate(a.criteria, me.role), pct = r.total / r.max * 100;
+    const exp = PLAY_ROLES.includes(me.role) ? 'play' : 'retail', got = a.detected;
     const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
-    show(resultHtml(role, r, pass, mismatch));
-    $('status').textContent = '';
-  } catch (e) { console.error(e); show('<div class="note">Scoring is busy. Please try again in a moment. This did not use an attempt.</div>'); $('status').textContent = ''; $('go').disabled = false; }
-};
-function resultHtml(role, r, pass, mismatch) {
-  const bars = applies(role).map(c => { const mx = r.maxes[c], sc = r.scores[c], fb = r.feedback.filter(f => f.criterion === c);
-    return `<div class="item"><div class="t"><span>${LABELS[c]}${c === 'name_tag' ? ' <small>(self-confirmed)</small>' : ''}</span><span>${sc}/${mx}</span></div><div class="bar"><i class="${sc === mx ? '' : 'low'}" style="width:${sc / mx * 100}%"></i></div>${fb.map(f => `<div class="why">${f.reason}${f.points_lost && f.points_lost < mx ? ` (-${f.points_lost})` : ''}</div>`).join('')}</div>`; }).join('');
-  return `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${r.total}/${r.max}</div>
-   <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bars}
-   ${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
-   <button class="btn alt" id="del">Delete my photo</button><button class="btn ghost ${pass ? "hidden" : ""}" id="again">Take another photo</button>
-   <p class="hint" id="delmsg"></p>`;
+    const att = { total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
+    const d = day.addAttempt(me.store, me.name, att);
+    $('status').textContent = ''; showResult(att, d, false, r, mismatch);
+  } catch (e) { console.error(e); $('status').textContent = ''; showRetake('Scoring is busy. Please try again in a moment.'); }
 }
-function show(html) {
-  const el = $('result'); el.innerHTML = html; el.classList.remove('hidden'); el.scrollIntoView({ behavior: 'smooth' });
-  const d = $('del'); if (d) d.onclick = () => { clearPhoto(true); $('delmsg').textContent = 'Photo deleted. Only your score stays on screen.'; d.disabled = true; };
-  const ag = $('again'); if (ag) ag.onclick = () => { clearPhoto(); el.classList.add('hidden'); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+function showRetake(msg) {
+  show('result'); $('result').innerHTML = `<div class="note"><b>Please retake.</b> ${msg} This did not use an attempt.</div><button class="btn" id="again0">Open camera</button>`;
+  $('again0').onclick = () => { clearStill(); $('result').classList.add('hidden'); $('openCam').click(); };
 }
+function showResult(att, d, lockedNoMore, r, mismatch) {
+  const pass = att.pct >= PASS_PERCENT - 1e-9, used = d.attempts.length, left = MAX_ATTEMPTS - used;
+  const bars = r ? applies(me.role).map(c => { const mx = r.maxes[c], sc = r.scores[c], fb = r.feedback.filter(f => f.criterion === c);
+    return `<div class="item"><div class="t"><span>${LABELS[c]}${c === 'name_tag' ? ' <small>(self-confirmed)</small>' : ''}</span><span>${sc}/${mx}</span></div><div class="bar"><i class="${sc === mx ? '' : 'low'}" style="width:${sc / mx * 100}%"></i></div>${fb.map(f => `<div class="why">${f.reason}${f.points_lost && f.points_lost < mx ? ` (-${f.points_lost})` : ''}</div>`).join('')}</div>`; }).join('') : '';
+  const bestLine = d.best && d.best.pct > att.pct ? `<p class="hint" style="text-align:center">Your best today so far: ${d.best.total}/${d.best.max}</p>` : '';
+  $('attemptPill').textContent = `Attempt ${used} of ${MAX_ATTEMPTS} used`;
+  show('result'); $('result').innerHTML = `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${att.total}/${att.max}</div>
+   <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bestLine}${bars}
+   ${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
+   ${!pass && left > 0 && !lockedNoMore ? `<button class="btn ghost" id="retry">Try again (${left} left today)</button>` : ''}
+   ${!pass && left <= 0 ? '<div class="note">You have used all 3 attempts for today.</div>' : ''}
+   <button class="btn green" id="done">Done for the day</button>
+   ${r ? '<button class="btn alt" id="del">Delete my photo</button>' : ''}<p class="hint" id="delmsg"></p>`;
+  const rt = $('retry'); if (rt) rt.onclick = () => { clearStill(); $('result').classList.add('hidden'); show('cap'); $('openCam').click(); };
+  $('done').onclick = () => { stopCam(); const dd = day.finish(me.store, me.name); showDone(dd); };
+  const del = $('del'); if (del) del.onclick = () => { clearStill(); $('delmsg').textContent = 'Photo deleted. Only your score stays.'; del.disabled = true; };
+  $('result').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ---------------------------------------------------------------- headcount (a nudge: never blocks a check-in)
+function renderHeadcount() {
+  const have = headcount.get(me.store); show('hc'); 
+  if (have) { $('hc').innerHTML = `<h2>Store headcount</h2><p>Today's headcount for <b>${me.storeName}</b>: <b>${have.n}</b> (entered by ${have.by}). Thank you!</p>`; return; }
+  let n = headcount.suggested(me.store);
+  $('hc').innerHTML = `<h2>How many people are working at ${me.storeName} today?</h2><p class="hint">This helps us see who is still to do their check. Suggested number is shown, change it if needed.</p>
+   <div class="stepper"><button id="m" aria-label="less">−</button><b id="n">${n}</b><button id="p" aria-label="more">+</button></div>
+   <button class="btn" id="hcOk">Confirm headcount</button><button class="lnk" id="hcSkip">Skip for now</button>`;
+  $('m').onclick = () => { n = Math.max(1, n - 1); $('n').textContent = n; }; $('p').onclick = () => { n = Math.min(300, n + 1); $('n').textContent = n; };
+  $('hcOk').onclick = () => { headcount.set(me.store, n, me.name); renderHeadcount(); }; $('hcSkip').onclick = () => show('hc', false);
+}
+start();
 </script></main></body></html>

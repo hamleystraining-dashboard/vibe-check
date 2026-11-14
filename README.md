@@ -1,8 +1,6 @@
-# Hamleys Vibe Check (v1, on-phone scoring)
-Static site: no server, no AI key. Upload the whole folder to a GitHub repo and turn on Pages (Settings > Pages > main branch, root).
-Open https://<org>.github.io/<repo>/ in Chrome or Safari. Photos are analysed on the phone and never uploaded.
-
-- js/rules.js     scoring tables and points (port of scoring.py). Pass mark: PASS_PERCENT in index.html.
-- js/analyze.js   the checks. Thresholds are in the T object at the top: tune them with more example photos.
-- models/, lib/, wasm/  free vision models and runtime, bundled so nothing loads from outside (fonts excepted).
-Not built yet: attempts per day, streaks, dashboard, admin (need Supabase).
+# Hamleys Vibe Check (v2)
+Static site, no server and no AI key. Upload the folder contents to the GitHub repo (replace existing files).
+- index.html      the staff page: store + name + designation, live camera only, 3 attempts a day, Done for the day, headcount
+- js/db.js        data layer. Saves on the phone only for now; swap these functions for Supabase to share data
+- js/rules.js     scoring tables and points   - js/analyze.js  the photo checks (thresholds in T)
+- data_stores.js  the 124 stores
