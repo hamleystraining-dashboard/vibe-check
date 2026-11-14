@@ -12,7 +12,14 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
 .btn{display:block;width:100%;text-align:center;background:var(--red);color:#fff;border:0;border-radius:12px;padding:14px;font-family:Fredoka,sans-serif;font-size:18px;margin:8px 0}
 .btn.alt{background:var(--brown)}.btn.ghost{background:#fff;color:var(--red);border:2px solid var(--red)}.btn.green{background:var(--green)}.btn[disabled]{opacity:.5}
 .row{display:flex;gap:8px;align-items:center}.row input[type=checkbox]{width:22px;height:22px}
-.hint{font-size:13px;opacity:.85}video,#still{width:100%;max-height:62vh;object-fit:contain;border-radius:10px;margin-top:8px;background:#000}
+.hint{font-size:13px;opacity:.85}#still{width:100%;max-height:75vh;object-fit:contain;border-radius:10px;margin-top:8px;background:#000}
+#camLayer{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column}#video{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+#camTop{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;display:flex;justify-content:space-between;align-items:center;color:#fff;background:linear-gradient(#000a,#0000);font-weight:700;font-size:14px}
+#camClose{background:#0008;color:#fff;border:0;border-radius:99px;width:40px;height:40px;font-size:20px}
+#camBottom{position:absolute;bottom:0;left:0;right:0;padding:14px 0 calc(env(safe-area-inset-bottom) + 18px);display:flex;justify-content:center;background:linear-gradient(#0000,#000a)}
+#snap{width:76px;height:76px;border-radius:50%;border:5px solid #fff;background:var(--red);padding:0;margin:0}
+.combo{position:relative}.list{max-height:240px;overflow:auto;border:2px solid var(--gold);border-radius:10px;margin-top:4px;background:#fff}
+.list div{padding:12px;border-bottom:1px solid #f1e6cf;font-size:16px}.list div:last-child{border:0}.list div:active{background:#fff4d6}.list small{opacity:.7}
 .score{font-family:Fredoka;font-size:44px;text-align:center;margin:4px 0}.ok{color:var(--green)}.bad{color:var(--red)}
 .bar{background:#f1e6cf;border-radius:8px;height:14px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--green)}.bar>i.low{background:var(--red)}
 .item{margin:10px 0}.item .t{display:flex;justify-content:space-between;font-weight:700}.why{font-size:14px;color:var(--red);margin-top:2px}
@@ -31,7 +38,7 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
 
 <div id="setup" class="card hidden">
  <h2>Who are you?</h2>
- <label for="store">Your store</label><input type="text" id="store" list="stores" placeholder="Start typing your store name" autocomplete="off"><datalist id="stores"></datalist>
+ <label for="store">Your store</label><div class="combo"><input type="text" id="store" placeholder="Tap and type, e.g. PHOE" autocomplete="off" autocapitalize="none" spellcheck="false"><div id="storeList" class="list hidden"></div></div>
  <label for="pname">Your name</label><input type="text" id="pname" autocomplete="name" placeholder="As on your name tag">
  <label for="role">Your designation</label><select id="role"></select>
  <button class="btn" id="setupGo">Continue</button><div id="setupErr" class="why"></div>
@@ -47,8 +54,6 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
   <div class="row"><input type="checkbox" id="tag"><label for="tag" style="margin:0">My name tag is on and visible</label></div>
   <p class="hint">Ask a colleague to take your photo with the back camera: standing straight, hands at your sides, full body from head to shoes, good light.</p>
   <button class="btn" id="openCam">Open camera</button>
-  <video id="video" playsinline muted class="hidden"></video>
-  <button class="btn green hidden" id="snap">Take the photo</button>
   <div id="fallback" class="hidden">
    <p class="hint">Live camera is not available here, so your phone camera app will open instead.</p>
    <label class="btn" for="camIn">Open phone camera</label><input id="camIn" type="file" accept="image/*" capture="environment" hidden>
@@ -61,6 +66,8 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
  <div id="hc" class="card hidden"></div>
 </div>
 
+<div id="camLayer" class="hidden"><video id="video" playsinline muted></video><div id="camTop"><span>Head to shoes in the frame, hands at your sides</span><button id="camClose" aria-label="Close camera">✕</button></div><div id="camBottom"><button id="snap" aria-label="Take the photo"></button></div></div>
+
 <script type="module">
 import Human from './lib/human.esm.js';
 import { analyze } from './js/analyze.js';
@@ -71,7 +78,17 @@ const PASS_PERCENT = 80, MAX_ATTEMPTS = 3;
 const $ = id => document.getElementById(id), show = (id, on = true) => $(id).classList.toggle('hidden', !on);
 const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.' };
 
-$('stores').innerHTML = STORES.map(s => `<option value="${s.name.replace(/"/g, '&quot;')} (${s.code})"></option>`).join('');
+let pickedStore = null;
+const storeLabel = s => `${s.name} (${s.code})`;
+function showStoreList() {
+  const q = $('store').value.trim().toLowerCase(), words = q.split(/\s+/).filter(Boolean);
+  const hits = STORES.filter(s => { const t = (s.name + ' ' + s.code).toLowerCase(); return words.every(w => t.includes(w)); });
+  const box = $('storeList'); box.classList.remove('hidden');
+  box.innerHTML = hits.length ? hits.map(s => `<div data-c="${s.code}">${s.name} <small>${s.code}</small></div>`).join('') : '<div><small>No store found. Try another word.</small></div>';
+}
+$('store').oninput = () => { pickedStore = null; showStoreList(); };
+$('store').onfocus = showStoreList;
+$('storeList').onclick = e => { const d = e.target.closest('[data-c]'); if (!d) return; pickedStore = STORES.find(s => s.code === d.dataset.c); $('store').value = storeLabel(pickedStore); $('storeList').classList.add('hidden'); $('store').blur(); };
 $('role').innerHTML = '<option value="">Choose...</option>' + SCORED_ROLES.map(r => `<option>${r}</option>`).join('');
 let me = profile.get(), stream = null, human = null;
 
@@ -81,7 +98,7 @@ function start() {
 }
 $('agree').onclick = () => { consent.set(); start(); };
 $('setupGo').onclick = () => {
-  const store = STORES.find(s => `${s.name} (${s.code})` === $('store').value.trim() || s.code === $('store').value.trim().toUpperCase());
+  const store = pickedStore || STORES.find(s => storeLabel(s) === $('store').value.trim() || s.code === $('store').value.trim().toUpperCase());
   const name = $('pname').value.trim(), role = $('role').value;
   if (!store) { $('setupErr').textContent = 'Please pick your store from the list.'; return; }
   if (name.length < 2) { $('setupErr').textContent = 'Please enter your name.'; return; }
@@ -97,7 +114,7 @@ function renderToday() {
   if (d.done) { showDone(d); return; }
   const used = d.attempts.length;
   $('attemptPill').textContent = used ? `Attempt ${Math.min(used + 1, MAX_ATTEMPTS)} of ${MAX_ATTEMPTS}` : `Attempt 1 of ${MAX_ATTEMPTS}`;
-  show('cap', true); show('openCam', true); show('snap', false); show('video', false); show('fallback', false);
+  show('cap', true); show('openCam', true); show('camLayer', false); show('fallback', false);
   if (used >= MAX_ATTEMPTS) { show('cap', false); showResult(d.best, d, true); }
 }
 function showDone(d) {
@@ -108,13 +125,14 @@ function showDone(d) {
 }
 
 // ---------------------------------------------------------------- camera (live camera only: no gallery, no file picking)
+$('camClose').onclick = () => { stopCam(); show('camLayer', false); show('openCam', true); };
 function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $('video').srcObject = null; }
 $('openCam').onclick = async () => {
   $('status').textContent = '';
   if (!navigator.mediaDevices?.getUserMedia) { show('openCam', false); show('fallback', true); return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: false });
-    const v = $('video'); v.srcObject = stream; await v.play(); show('video'); show('snap'); show('openCam', false); clearStill();
+    const v = $('video'); v.srcObject = stream; await v.play(); show('camLayer'); show('openCam', false); clearStill();
     getHuman().catch(() => {});     // warm up the models while they line up the shot
   } catch (e) { $('status').textContent = 'Camera permission was blocked. Allow the camera for this page and try again.'; show('openCam', false); show('fallback', true); }
 };
@@ -122,7 +140,7 @@ $('snap').onclick = async () => {
   const v = $('video'); if (!v.videoWidth) return;
   const c = document.createElement('canvas'), sc = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
   c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
-  stopCam(); show('video', false); show('snap', false); await scorePhoto(c);
+  stopCam(); show('camLayer', false); await scorePhoto(c);
 };
 $('camIn').onchange = async e => {      // fallback: the phone's camera app (the browser may still offer the gallery on some phones)
   const f = e.target.files[0]; e.target.value = ''; if (!f) return;
@@ -178,15 +196,15 @@ function showResult(att, d, lockedNoMore, r, mismatch) {
 }
 
 // ---------------------------------------------------------------- headcount (a nudge: never blocks a check-in)
-function renderHeadcount() {
+function renderHeadcount(justEntered = false) {
   const have = headcount.get(me.store); show('hc'); 
-  if (have) { $('hc').innerHTML = `<h2>Store headcount</h2><p>Today's headcount for <b>${me.storeName}</b>: <b>${have.n}</b> (entered by ${have.by}). Thank you!</p>`; return; }
+  if (have) { if (justEntered) { $('hc').innerHTML = `<h2>Store headcount saved</h2><p>Headcount for <b>${me.storeName}</b> today: <b>${have.n}</b>. Thank you!</p>`; } else show('hc', false); return; }
   let n = headcount.suggested(me.store);
   $('hc').innerHTML = `<h2>How many people are working at ${me.storeName} today?</h2><p class="hint">This helps us see who is still to do their check. Suggested number is shown, change it if needed.</p>
    <div class="stepper"><button id="m" aria-label="less">−</button><b id="n">${n}</b><button id="p" aria-label="more">+</button></div>
    <button class="btn" id="hcOk">Confirm headcount</button><button class="lnk" id="hcSkip">Skip for now</button>`;
   $('m').onclick = () => { n = Math.max(1, n - 1); $('n').textContent = n; }; $('p').onclick = () => { n = Math.min(300, n + 1); $('n').textContent = n; };
-  $('hcOk').onclick = () => { headcount.set(me.store, n, me.name); renderHeadcount(); }; $('hcSkip').onclick = () => show('hc', false);
+  $('hcOk').onclick = () => { headcount.set(me.store, n, me.name); renderHeadcount(true); }; $('hcSkip').onclick = () => show('hc', false);
 }
 start();
 </script></main></body></html>
