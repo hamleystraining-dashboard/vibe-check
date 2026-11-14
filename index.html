@@ -13,7 +13,7 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
 .btn.alt{background:var(--brown)}.btn.ghost{background:#fff;color:var(--red);border:2px solid var(--red)}.btn.green{background:var(--green)}.btn[disabled]{opacity:.5}
 .row{display:flex;gap:8px;align-items:center}.row input[type=checkbox]{width:22px;height:22px}
 .hint{font-size:13px;opacity:.85}#still{width:100%;max-height:75vh;object-fit:contain;border-radius:10px;margin-top:8px;background:#000}
-#camLayer{position:fixed;inset:0;z-index:50;background:#000;display:flex;flex-direction:column}#video{flex:1;min-height:0;width:100%;object-fit:contain;background:#000}
+#camLayer{position:fixed;left:0;top:0;width:100vw;height:100vh;height:100dvh;z-index:50;background:#000}#video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;background:#000}#zoomBox{position:absolute;left:24px;right:24px;bottom:calc(env(safe-area-inset-bottom) + 112px);display:flex;align-items:center;gap:10px;color:#fff;font-weight:700}#zoom{flex:1}
 #camTop{position:absolute;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;display:flex;justify-content:space-between;align-items:center;color:#fff;background:linear-gradient(#000a,#0000);font-weight:700;font-size:14px}
 #camClose{background:#0008;color:#fff;border:0;border-radius:99px;width:40px;height:40px;font-size:20px}
 #camBottom{position:absolute;bottom:0;left:0;right:0;padding:14px 0 calc(env(safe-area-inset-bottom) + 18px);display:flex;justify-content:center;background:linear-gradient(#0000,#000a)}
@@ -66,7 +66,7 @@ label{font-weight:700;display:block;margin:10px 0 4px}select,input[type=text]{wi
  <div id="hc" class="card hidden"></div>
 </div>
 
-<div id="camLayer" class="hidden"><video id="video" playsinline muted></video><div id="camTop"><span>Head to shoes in the frame, hands at your sides</span><button id="camClose" aria-label="Close camera">✕</button></div><div id="camBottom"><button id="snap" aria-label="Take the photo"></button></div></div>
+<div id="camLayer" class="hidden"><video id="video" playsinline muted></video><div id="camTop"><span>Head to shoes in the frame, hands at your sides</span><button id="camClose" aria-label="Close camera">✕</button></div><div id="zoomBox" class="hidden"><span>−</span><input id="zoom" type="range"><span>+</span></div><div id="camBottom"><button id="snap" aria-label="Take the photo"></button></div></div>
 
 <script type="module">
 import Human from './lib/human.esm.js';
@@ -126,20 +126,26 @@ function showDone(d) {
 
 // ---------------------------------------------------------------- camera (live camera only: no gallery, no file picking)
 $('camClose').onclick = () => { stopCam(); show('camLayer', false); show('openCam', true); };
-function stopCam() { if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $('video').srcObject = null; }
+function stopCam() { try { if (document.fullscreenElement) document.exitFullscreen(); } catch (e) {} show('zoomBox', false); if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; } $('video').srcObject = null; }
 $('openCam').onclick = async () => {
   $('status').textContent = '';
   if (!navigator.mediaDevices?.getUserMedia) { show('openCam', false); show('fallback', true); return; }
+  try { $('camLayer').requestFullscreen?.({ navigationUI: 'hide' })?.catch(() => {}); } catch (e) {}     // hides the browser bars where the phone allows it
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1080 }, height: { ideal: 1920 } }, audio: false });
+    const ar = Math.max(innerWidth, innerHeight) / Math.min(innerWidth, innerHeight);
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1080 }, height: { ideal: 1920 }, aspectRatio: { ideal: 1 / ar } }, audio: false });
     const v = $('video'); v.srcObject = stream; await v.play(); show('camLayer'); show('openCam', false); clearStill();
+    try { const tr = stream.getVideoTracks()[0], cap = tr.getCapabilities?.() || {};      // zoom slider where the phone supports it
+      if (cap.zoom && cap.zoom.max > cap.zoom.min) { const z = $('zoom'); z.min = cap.zoom.min; z.max = cap.zoom.max; z.step = cap.zoom.step || 0.1; z.value = tr.getSettings().zoom || cap.zoom.min; z.oninput = () => tr.applyConstraints({ advanced: [{ zoom: +z.value }] }).catch(() => {}); show('zoomBox'); } } catch (e) {}
     getHuman().catch(() => {});     // warm up the models while they line up the shot
   } catch (e) { $('status').textContent = 'Camera permission was blocked. Allow the camera for this page and try again.'; show('openCam', false); show('fallback', true); }
 };
 $('snap').onclick = async () => {
   const v = $('video'); if (!v.videoWidth) return;
-  const c = document.createElement('canvas'), sc = Math.min(1, 1280 / Math.max(v.videoWidth, v.videoHeight));
-  c.width = Math.round(v.videoWidth * sc); c.height = Math.round(v.videoHeight * sc); c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  // keep exactly what the person saw on screen (the video fills the screen and is cropped at the edges)
+  const vw = v.videoWidth, vh = v.videoHeight, k = Math.max(v.clientWidth / vw, v.clientHeight / vh), sw = Math.min(vw, v.clientWidth / k), sh = Math.min(vh, v.clientHeight / k), sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+  const c = document.createElement('canvas'), sc = Math.min(1, 1280 / Math.max(sw, sh));
+  c.width = Math.round(sw * sc); c.height = Math.round(sh * sc); c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
   stopCam(); show('camLayer', false); await scorePhoto(c);
 };
 $('camIn').onchange = async e => {      // fallback: the phone's camera app (the browser may still offer the gallery on some phones)

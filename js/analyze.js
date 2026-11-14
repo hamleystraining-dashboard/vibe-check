@@ -85,7 +85,7 @@ export function analyze(canvas, human, designation) {
   {
     const r = region(shX - shW * 0.30, shY + 0.45 * bu, shX + shW * 0.30, hipY - 0.35 * bu, "top", "#06f");
     const s = sample(r), st = stat(s); m.top = { h: Math.round(st.h), s: +st.s.toFixed(2), v: +st.v.toFixed(2) };
-    const black = s.filter(p => p[5] < 0.32).length / s.length, red = s.filter(p => (p[3] < 20 || p[3] > 340) && p[4] > 0.5 && p[5] > 0.35).length / s.length;
+    const black = s.filter(p => p[5] < 0.32 || (p[5] < 0.52 && p[4] < 0.30)).length / s.length, red = s.filter(p => (p[3] < 20 || p[3] > 340) && p[4] > 0.5 && p[5] > 0.35).length / s.length;
     const grey = s.filter(p => p[4] < 0.34 && p[5] > 0.25 && p[5] < 0.82).length / s.length;
     m.top.black = +black.toFixed(2); m.top.red = +red.toFixed(2); m.top.grey = +grey.toFixed(2);
     let detected = "unclear";
@@ -165,16 +165,17 @@ export function analyze(canvas, human, designation) {
     // rows that contain real black pixels = the shoe; within the shoe's horizontal span count black vs white/bright/coloured. Mid-tones (shadow, texture) are ignored; the sole (bottom 15% of the shoe) is ignored.
     const rowInfo = [];
     for (let y = r.y0; y < r.y1; y += 2) {
-      let first = -1, last = -1, cnt = 0;
-      for (let x = r.x0; x < r.x1; x += 2) { const [R, G, B] = px(x, y); if (Math.max(R, G, B) / 255 < 0.30) { if (first < 0) first = x; last = x; cnt++; } }
-      rowInfo.push({ y, first, last, cnt });
+      const xsDark = []; for (let x = r.x0; x < r.x1; x += 2) { const [R, G, B] = px(x, y); if (Math.max(R, G, B) / 255 < 0.30) xsDark.push(x); }
+      // split into separate shoes: a gap wider than 0.15 body units (the floor between the feet) is not part of any shoe
+      const segs = []; for (const x of xsDark) { const sg = segs[segs.length - 1]; if (sg && x - sg.last <= 0.15 * bu) { sg.last = x; sg.cnt++; } else segs.push({ first: x, last: x, cnt: 1 }); }
+      rowInfo.push({ y, segs: segs.filter(g => g.cnt >= 2), cnt: xsDark.length });
     }
-    const shoeRows = rowInfo.filter(q => q.cnt >= 3);
+    const shoeRows = rowInfo.filter(q => q.cnt >= 3 && q.segs.length);
     let black = 0, bright = 0, darkPx = 0, blackS = 0, brightS = 0;
     if (shoeRows.length) {
       const yTop = shoeRows[0].y, yBot = shoeRows[shoeRows.length - 1].y, yCut = yBot - 0.15 * (yBot - yTop);
       for (const q of shoeRows) { darkPx += q.cnt;
-        for (let x = q.first; x <= q.last; x += 2) { const [R, G, B] = px(x, q.y), [h, sat, v] = rgb2hsv(R, G, B);
+        for (const g of q.segs) for (let x = g.first; x <= g.last; x += 2) { const [R, G, B] = px(x, q.y), [h, sat, v] = rgb2hsv(R, G, B);
           const bl = v < 0.40, br = !bl && (v > 0.62 || (sat > 0.5 && v > 0.35));
           if (bl) blackS++; else if (br) brightS++;
           if (q.y <= yCut) { if (bl) black++; else if (br) bright++; } } }
