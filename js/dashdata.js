@@ -4,6 +4,7 @@
 //   records:    [{ date:'YYYY-MM-DD', code:'THE0', name:'Asha', role:'Fun Consultant', pct:86.0 }]   best score per person per day
 //   headcounts: [{ date:'YYYY-MM-DD', code:'THE0', n:12 }]
 import { outbox, todayIST } from './db.js';
+import { enabled, rpc } from './supa.js';
 
 export function fromLocal() {
   const best = new Map(), hc = new Map();
@@ -38,7 +39,13 @@ export function sample(stores, endDate) {
   return { records, headcounts };
 }
 
-export async function load({ stores, demo, endDate }) {
-  // Supabase later: return await fetchFromSupabase();
-  return demo ? sample(stores, endDate || todayIST()) : fromLocal();
+// Supabase: needs the dashboard passcode. Throws Error('denied') when it is wrong.
+export async function fromSupabase(pass, from, to) {
+  const j = await rpc("dashboard_data", { p_pass: pass, p_from: from, p_to: to }, 30000);
+  return { records: (j.records || []).map(r => ({ ...r, pct: Number(r.pct) })), headcounts: j.headcounts || [] };
+}
+export const sharedEnabled = enabled;
+export async function load({ stores, demo, endDate, pass, from, to }) {
+  if (demo) return sample(stores, endDate || todayIST());
+  return enabled ? fromSupabase(pass, from, to) : fromLocal();
 }

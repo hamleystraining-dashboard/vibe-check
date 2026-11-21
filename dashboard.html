@@ -65,13 +65,14 @@ button.link:hover{text-decoration:underline}
     <div class="range" id="rangeTxt"></div>
   </div>
   <div id="banner"></div>
+  <div id="gate" hidden><div class="card" style="max-width:380px;margin:24px auto;text-align:center"><b style="font-size:17px">Dashboard passcode</b><p style="color:var(--mute);margin:6px 0 10px">Ask the L&amp;D team for the passcode.</p><input type="password" id="pass" autocomplete="off" style="font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;width:100%"><button id="passGo" style="margin-top:10px;width:100%;font:inherit;font-weight:700;padding:9px;border:0;border-radius:8px;background:var(--red);color:#fff;cursor:pointer">Open dashboard</button><p id="passErr" style="color:var(--bad);margin:8px 0 0;min-height:1em"></p></div></div>
   <div class="cards" id="cards"></div>
   <div id="view"></div>
   <p class="foot">Score = average of each person's best photo of the day, as % of their role's total. Pass mark 80%. Checked X/Y = people checked ÷ store headcount entered by the store. Read-only.</p>
 </main>
 <script type="module">
 import { STORES } from './data_stores.js';
-import { load } from './js/dashdata.js';
+import { load, sharedEnabled } from './js/dashdata.js';
 import { todayIST } from './js/db.js';
 
 const $ = id => document.getElementById(id), PASS = 80;
@@ -107,13 +108,14 @@ function crunch(list, [from, to]) {
 }
 const status = o => o.hc == null ? `<span class="st">Headcount not entered</span>` : o.x >= o.y ? `<span class="st done">Complete</span>` : `<span class="st pend">${o.y - o.x} pending</span>`;
 
+let msg = "";
 function renderBanner() {
   const has = data.records.length > 0;
   $("banner").innerHTML = demo ? `<div class="banner"><b>Sample data</b> – these are made-up numbers so you can review the layout. <button id="bLive">Show real check-ins</button></div>`
+    : sharedEnabled ? (msg ? `<div class="banner">${esc(msg)}</div>` : "")
     : has ? "" : `<div class="banner">No check-ins found yet. Until the shared database is connected, this page only shows check-ins made on <b>this phone or browser</b>. <button id="bDemo">Preview with sample data</button></div>`;
   const b1 = $("bLive"), b2 = $("bDemo"); if (b1) b1.onclick = () => setDemo(false); if (b2) b2.onclick = () => setDemo(true);
 }
-async function setDemo(v) { demo = v; await refresh(); }
 
 function renderCards(rows) {
   const checked = rows.filter(o => o.n), all = rows.reduce((a, o) => a + o.n, 0);
@@ -163,14 +165,34 @@ function renderMgmt() {
 function render() {
   const [f, t] = range(); $("rangeTxt").textContent = f === t ? fmt(f) : `${fmt(f)} – ${fmt(t)}`;
   $("tabS").classList.toggle("on", tab === "stores"); $("tabM").classList.toggle("on", tab === "mgmt");
-  renderBanner(); tab === "stores" ? renderStores() : renderMgmt();
+  renderBanner(); if (sharedEnabled && !demo && !pass) return; tab === "stores" ? renderStores() : renderMgmt();
 }
-async function refresh() { data = await load({ stores: STORES, demo, endDate: todayIST() }); render(); }
-
+let win = null, pass = sessionStorage.getItem("vc:pass") || "", seq = 0;
+async function refresh(force) {
+  const [f, t] = range(), from = addDays(f < addDays(t, -6) ? f : addDays(t, -6), 0), to = t, my = ++seq;
+  const gated = sharedEnabled && !demo;
+  $("gate").hidden = !(gated && !pass); $("view").hidden = $("cards").hidden = gated && !pass;
+  if (gated && !pass) { $("banner").innerHTML = ""; return; }
+  if (!force && win && win.demo === demo && win.from <= from && win.to >= to) { msg = ""; return render(); }
+  try {
+    msg = "Loading…"; render();
+    const wf = addDays(from, -7), d = await load({ stores: STORES, demo, endDate: todayIST(), pass, from: wf, to });
+    if (my !== seq) return; data = d; win = { from: wf, to, demo }; msg = "";
+  } catch (e) {
+    if (my !== seq) return; win = null;
+    if (String(e.message).includes("denied")) { pass = ""; sessionStorage.removeItem("vc:pass"); $("gate").hidden = false; $("view").hidden = $("cards").hidden = true; $("passErr").textContent = "That passcode is not right."; $("banner").innerHTML = ""; return; }
+    msg = "Could not load the data. Check your internet connection and try again."; data = { records: [], headcounts: [] };
+  }
+  render();
+}
+$("passGo").onclick = () => { pass = $("pass").value.trim(); if (!pass) return; sessionStorage.setItem("vc:pass", pass); $("passErr").textContent = ""; refresh(true); };
+$("pass").onkeydown = e => { if (e.key === "Enter") $("passGo").click(); };
+async function setDemo(v) { demo = v; win = null; await refresh(); }
 $("tabS").onclick = () => { tab = "stores"; openStore = null; render(); };
 $("tabM").onclick = () => { tab = "mgmt"; render(); };
-["fSd", "fRom", "fRm", "fType", "date", "from", "to"].forEach(id => $(id).onchange = () => { openStore = null; render(); });
-$("period").onchange = () => { const c = $("period").value === "custom", d = $("period").value === "day" || $("period").value === "week" || $("period").value === "month"; $("dateL").hidden = !d; $("fromL").hidden = $("toL").hidden = !c; openStore = null; render(); };
+["fSd", "fRom", "fRm", "fType"].forEach(id => $(id).onchange = () => { openStore = null; render(); });
+["date", "from", "to"].forEach(id => $(id).onchange = () => { openStore = null; refresh(); });
+$("period").onchange = () => { const c = $("period").value === "custom"; $("dateL").hidden = c; $("fromL").hidden = $("toL").hidden = !c; openStore = null; refresh(); };
 fillSelect("fSd", "sd"); fillSelect("fRom", "rom"); fillSelect("fRm", "rm");
 refresh();
 </script>

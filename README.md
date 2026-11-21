@@ -7,3 +7,6 @@ Static site, no server and no AI key. Upload the folder contents to the GitHub r
 
 ## Dashboard
 Open `dashboard.html` (add `?demo=1` for sample data). Today it reads check-ins saved on the same phone; to show every store, replace the body of `load()` in `js/dashdata.js` with Supabase queries.
+
+## Supabase
+Connection details are in `js/config.js`. Tables and functions are created by the SQL in the project notes; the dashboard needs the passcode stored in `app_settings`.
