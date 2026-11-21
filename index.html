@@ -174,7 +174,7 @@ async function scorePhoto(c) {
     const r = calculate(a.criteria, me.role); let pct = r.total / r.max * 100; if (r.topFail) pct = Math.min(pct, PASS_PERCENT - 0.01);     // wrong top = cannot pass
     const exp = PLAY_ROLES.includes(me.role) ? 'play' : 'retail', got = a.detected;
     const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
-    const att = { total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
+    const att = { role: me.role, total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
     const d = day.addAttempt(me.store, me.name, att);
     $('status').textContent = ''; showResult(att, d, false, r, mismatch);
   } catch (e) { console.error(e); $('status').textContent = ''; showRetake('Scoring is busy. Please try again in a moment.'); }

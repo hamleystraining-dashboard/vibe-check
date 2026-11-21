@@ -4,3 +4,6 @@ Static site, no server and no AI key. Upload the folder contents to the GitHub r
 - js/db.js        data layer. Saves on the phone only for now; swap these functions for Supabase to share data
 - js/rules.js     scoring tables and points   - js/analyze.js  the photo checks (thresholds in T)
 - data_stores.js  the 124 stores
+
+## Dashboard
+Open `dashboard.html` (add `?demo=1` for sample data). Today it reads check-ins saved on the same phone; to show every store, replace the body of `load()` in `js/dashdata.js` with Supabase queries.

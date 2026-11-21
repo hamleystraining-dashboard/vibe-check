@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#c8102e">
+<title>Hamleys Vibe Check – Grooming Dashboard</title>
+<link rel="icon" href="favicon.ico">
+<style>
+:root{--red:#c8102e;--cream:#fdf6ec;--line:#ead9c3;--ink:#2a2118;--mute:#7a6a58;--ok:#1f8a4c;--mid:#d98a00;--bad:#c8102e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--cream);color:var(--ink);font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{background:#fff;border-bottom:3px solid var(--red);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:5}
+h1{margin:0;font-size:18px;color:var(--red)}
+nav button{border:0;background:none;font:inherit;font-weight:600;color:var(--mute);padding:6px 12px;border-radius:999px;cursor:pointer}
+nav button.on{background:var(--red);color:#fff}
+main{padding:14px 16px 40px;max-width:1200px;margin:0 auto}
+.filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:#fff;border:1px solid var(--line);border-radius:12px;padding:12px}
+.filters label{display:flex;flex-direction:column;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);gap:3px}
+.filters select,.filters input{font:inherit;font-size:14px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);min-width:110px}
+label[hidden]{display:none}
+.range{margin-left:auto;font-weight:700;color:var(--red)}
+.banner{margin:12px 0;padding:10px 12px;border-radius:10px;background:#fff3cd;border:1px solid #ecd48a;font-size:13px}
+.banner button{margin-left:8px;font:inherit;font-weight:600;padding:4px 10px;border-radius:8px;border:1px solid #b79a3c;background:#fff;cursor:pointer}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:12px 0}
+.card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.card b{display:block;font-size:22px}.card span{font-size:12px;color:var(--mute)}
+h2{font-size:16px;margin:18px 0 8px}
+.wrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:12px}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f3e8d8;white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mute);background:#fbf3e6;position:sticky;top:0;cursor:pointer;user-select:none}
+th.nosort{cursor:default}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:center}
+a.link,button.link{color:var(--red);font:inherit;font-weight:600;background:none;border:0;padding:0;cursor:pointer;text-align:left}
+button.link:hover{text-decoration:underline}
+.pill{display:inline-block;min-width:54px;text-align:center;padding:2px 8px;border-radius:999px;font-weight:700;font-size:13px}
+.g{background:#dff3e6;color:var(--ok)}.a{background:#fdeccb;color:#8a5a00}.r{background:#fbdadf;color:var(--bad)}.n{background:#eee7dc;color:var(--mute);font-weight:500}
+.st{font-size:12px;padding:2px 8px;border-radius:999px;background:#eee7dc;color:var(--mute)}
+.st.done{background:#dff3e6;color:var(--ok)}.st.pend{background:#fdeccb;color:#8a5a00}
+.back{margin:12px 0 4px}
+.empty{padding:22px;text-align:center;color:var(--mute)}
+.two{display:grid;grid-template-columns:1fr;gap:6px}
+@media(min-width:900px){.two{grid-template-columns:1fr 1fr}}
+.foot{margin-top:24px;font-size:12px;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Hamleys Vibe Check – Grooming Dashboard</h1>
+  <nav><button id="tabS" class="on">Stores</button><button id="tabM">Management</button></nav>
+</header>
+<main>
+  <div class="filters">
+    <label>Period<select id="period"><option value="day">Day</option><option value="week">Week</option><option value="month">Month</option><option value="custom">Custom</option></select></label>
+    <label id="dateL">Date<input type="date" id="date"></label>
+    <label id="fromL" hidden>From<input type="date" id="from"></label>
+    <label id="toL" hidden>To<input type="date" id="to"></label>
+    <label>SD<select id="fSd"></select></label>
+    <label>ROM<select id="fRom"></select></label>
+    <label>RM<select id="fRm"></select></label>
+    <label>Store type<select id="fType"><option value="">All</option><option>Retail</option><option>Play</option><option>Retail/Play</option></select></label>
+    <div class="range" id="rangeTxt"></div>
+  </div>
+  <div id="banner"></div>
+  <div class="cards" id="cards"></div>
+  <div id="view"></div>
+  <p class="foot">Score = average of each person's best photo of the day, as % of their role's total. Pass mark 80%. Checked X/Y = people checked ÷ store headcount entered by the store. Read-only.</p>
+</main>
+<script type="module">
+import { STORES } from './data_stores.js';
+import { load } from './js/dashdata.js';
+import { todayIST } from './js/db.js';
+
+const $ = id => document.getElementById(id), PASS = 80;
+const ymd = d => d.toISOString().slice(0, 10), addDays = (s, n) => ymd(new Date(new Date(s + "T00:00:00Z").getTime() + n * 864e5));
+const fmt = s => new Date(s + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+const esc = t => String(t ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const dash = v => v || "—";
+
+let data = { records: [], headcounts: [] }, demo = new URLSearchParams(location.search).has("demo"), tab = "stores", openStore = null, sort = { k: "code", dir: 1 };
+
+$("date").value = $("to").value = todayIST(); $("from").value = addDays(todayIST(), -6);
+
+function range() {
+  const p = $("period").value, d = $("date").value || todayIST();
+  if (p === "day") return [d, d];
+  if (p === "week") return [addDays(d, -6), d];
+  if (p === "month") { const a = d.slice(0, 7) + "-01", n = new Date(a + "T00:00:00Z"); n.setUTCMonth(n.getUTCMonth() + 1); return [a, addDays(ymd(n), -1)]; }
+  const f = $("from").value || d, t = $("to").value || d; return f <= t ? [f, t] : [t, f];
+}
+function fillSelect(id, key) {
+  const el = $(id), cur = el.value, vals = [...new Set(STORES.map(s => s[key]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  el.innerHTML = `<option value="">All</option>` + vals.map(v => `<option>${esc(v)}</option>`).join(""); el.value = vals.includes(cur) ? cur : "";
+}
+const stores = () => STORES.filter(s => (!$("fSd").value || s.sd === $("fSd").value) && (!$("fRom").value || s.rom === $("fRom").value) && (!$("fRm").value || s.rm === $("fRm").value) && (!$("fType").value || s.type === $("fType").value));
+const pill = v => v == null ? `<span class="pill n">No data</span>` : `<span class="pill ${v >= PASS ? "g" : v >= 60 ? "a" : "r"}">${v.toFixed(0)}%</span>`;
+
+// Per-store numbers for the chosen range
+function crunch(list, [from, to]) {
+  const set = new Set(list.map(s => s.code)), by = new Map(list.map(s => [s.code, { s, sum: 0, n: 0, people: new Set(), hc: null, hcDate: "" }]));
+  for (const r of data.records) { if (r.date < from || r.date > to) continue; const o = by.get(r.code); if (!o) continue; o.sum += r.pct; o.n++; o.people.add(r.name.toLowerCase()); }
+  for (const h of data.headcounts) { if (h.date < from || h.date > to) continue; const o = by.get(h.code); if (o && h.date >= o.hcDate) { o.hc = h.n; o.hcDate = h.date; } }
+  return [...by.values()].map(o => ({ ...o, score: o.n ? o.sum / o.n : null, x: o.people.size, y: o.hc ?? 0 }));
+}
+const status = o => o.hc == null ? `<span class="st">Headcount not entered</span>` : o.x >= o.y ? `<span class="st done">Complete</span>` : `<span class="st pend">${o.y - o.x} pending</span>`;
+
+function renderBanner() {
+  const has = data.records.length > 0;
+  $("banner").innerHTML = demo ? `<div class="banner"><b>Sample data</b> – these are made-up numbers so you can review the layout. <button id="bLive">Show real check-ins</button></div>`
+    : has ? "" : `<div class="banner">No check-ins found yet. Until the shared database is connected, this page only shows check-ins made on <b>this phone or browser</b>. <button id="bDemo">Preview with sample data</button></div>`;
+  const b1 = $("bLive"), b2 = $("bDemo"); if (b1) b1.onclick = () => setDemo(false); if (b2) b2.onclick = () => setDemo(true);
+}
+async function setDemo(v) { demo = v; await refresh(); }
+
+function renderCards(rows) {
+  const checked = rows.filter(o => o.n), all = rows.reduce((a, o) => a + o.n, 0);
+  let ps = 0, tot = 0; const [f, t] = range(), codes = new Set(rows.map(o => o.s.code));
+  for (const r of data.records) if (r.date >= f && r.date <= t && codes.has(r.code)) { tot++; if (r.pct >= PASS) ps++; }
+  const avg = all ? rows.reduce((a, o) => a + o.sum, 0) / all : null;
+  $("cards").innerHTML = [[`${checked.length}/${rows.length}`, "Stores with check-ins"], [avg == null ? "–" : avg.toFixed(0) + "%", "Average grooming score"], [tot ? Math.round(ps / tot * 100) + "%" : "–", "Check-ins at or above pass mark"], [rows.reduce((a, o) => a + o.x, 0), "People checked"]]
+    .map(([b, l]) => `<div class="card"><b>${b}</b><span>${l}</span></div>`).join("");
+}
+
+function cmp(a, b) {
+  const g = { name: o => o.s.name.toLowerCase(), score: o => o.score ?? -1, x: o => o.x, code: o => o.s.code, sd: o => o.s.sd || "" }[sort.k] || (o => o.s.code);
+  const A = g(a), B = g(b); return (A < B ? -1 : A > B ? 1 : 0) * sort.dir;
+}
+function renderStores() {
+  const rows = crunch(stores(), range()).sort(cmp); renderCards(rows);
+  if (openStore) return renderPeople();
+  const head = [["#", "", 1], ["Store Name", "name"], ["Grooming Score", "score"], ["Checked (X/Y)", "x"], ["Store Code", "code"], ["Store Director", "sd"], ["Status", "", 1]];
+  $("view").innerHTML = `<h2>Stores</h2><div class="wrap"><table><thead><tr>${head.map(([t, k, ns]) => `<th class="${ns ? "nosort" : ""} ${t === "Grooming Score" || t.startsWith("Checked") ? "num" : ""}" ${k ? `data-k="${k}"` : ""}>${t}${sort.k === k ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>`
+    + (rows.length ? rows.map((o, i) => `<tr><td>${i + 1}</td><td><button class="link" data-c="${o.s.code}">${esc(o.s.name)}</button></td><td class="num">${pill(o.score)}</td><td class="num">${o.x}/${o.y}</td><td>${o.s.code}</td><td>${dash(esc(o.s.sd))}</td><td>${status(o)}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No stores match these filters.</td></tr>`)
+    + `</tbody></table></div>`;
+  $("view").querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { sort = { k: th.dataset.k, dir: sort.k === th.dataset.k ? -sort.dir : (th.dataset.k === "score" ? -1 : 1) }; renderStores(); });
+  $("view").querySelectorAll("button[data-c]").forEach(b => b.onclick = () => { openStore = b.dataset.c; renderStores(); window.scrollTo(0, 0); });
+}
+function renderPeople() {
+  const s = STORES.find(x => x.code === openStore), end = $("period").value === "custom" ? range()[1] : $("date").value || todayIST(), days = Array.from({ length: 7 }, (_, i) => addDays(end, i - 6));
+  const ppl = new Map();
+  for (const r of data.records) if (r.code === openStore && r.date >= days[0] && r.date <= end) { const k = r.name.toLowerCase(); if (!ppl.has(k)) ppl.set(k, { name: r.name, role: r.role, d: {} }); const p = ppl.get(k); p.d[r.date] = r.pct; if (r.role) p.role = r.role; }
+  const rows = [...ppl.values()].sort((a, b) => a.name.localeCompare(b.name)), hc = Object.fromEntries(data.headcounts.filter(h => h.code === openStore).map(h => [h.date, h.n]));
+  $("view").innerHTML = `<div class="back"><button class="link" id="back">← Back to stores</button></div><h2>People – ${esc(s?.name || openStore)}</h2><div class="wrap"><table><thead><tr><th class="nosort">Person</th><th class="nosort">Designation</th>${days.map(d => `<th class="nosort num">${fmt(d)}</th>`).join("")}</tr></thead><tbody>`
+    + (rows.length ? rows.map(p => `<tr><td>${esc(p.name)}</td><td>${dash(esc(p.role))}</td>${days.map(d => `<td class="num">${p.d[d] == null ? "–" : pill(p.d[d])}</td>`).join("")}</tr>`).join("")
+      + `<tr><td><b>Headcount entered</b></td><td></td>${days.map(d => `<td class="num">${hc[d] ?? "–"}</td>`).join("")}</tr>` : `<tr><td colspan="9" class="empty">No check-ins in the last 7 days.</td></tr>`) + `</tbody></table></div>`;
+  $("back").onclick = () => { openStore = null; renderStores(); };
+}
+
+function group(rows, key) {
+  const m = new Map();
+  for (const o of rows) { const k = o.s[key] || "—"; const g = m.get(k) || { name: k, sum: 0, n: 0, stores: 0, x: 0, y: 0 }; g.sum += o.sum; g.n += o.n; g.stores++; g.x += o.x; g.y += o.y; m.set(k, g); }
+  return [...m.values()].map(g => ({ ...g, score: g.n ? g.sum / g.n : null })).sort((a, b) => (b.score ?? -1) - (a.score ?? -1) || a.name.localeCompare(b.name));
+}
+function renderMgmt() {
+  const rows = crunch(stores(), range()); renderCards(rows);
+  const tbl = (title, key) => `<div><h2>${title}</h2><div class="wrap"><table style="min-width:420px"><thead><tr><th class="nosort">#</th><th class="nosort">Name</th><th class="nosort num">Grooming Score</th><th class="nosort num">Stores</th><th class="nosort num">Checked (X/Y)</th></tr></thead><tbody>`
+    + group(rows, key).map((g, i) => `<tr><td>${i + 1}</td><td>${esc(g.name)}</td><td class="num">${pill(g.score)}</td><td class="num">${g.stores}</td><td class="num">${g.x}/${g.y}</td></tr>`).join("") + `</tbody></table></div></div>`;
+  $("view").innerHTML = `<div class="two">${tbl("Store Director-wise", "sd")}${tbl("ROM-wise", "rom")}</div>${tbl("RM-wise", "rm")}`;
+}
+function render() {
+  const [f, t] = range(); $("rangeTxt").textContent = f === t ? fmt(f) : `${fmt(f)} – ${fmt(t)}`;
+  $("tabS").classList.toggle("on", tab === "stores"); $("tabM").classList.toggle("on", tab === "mgmt");
+  renderBanner(); tab === "stores" ? renderStores() : renderMgmt();
+}
+async function refresh() { data = await load({ stores: STORES, demo, endDate: todayIST() }); render(); }
+
+$("tabS").onclick = () => { tab = "stores"; openStore = null; render(); };
+$("tabM").onclick = () => { tab = "mgmt"; render(); };
+["fSd", "fRom", "fRm", "fType", "date", "from", "to"].forEach(id => $(id).onchange = () => { openStore = null; render(); });
+$("period").onchange = () => { const c = $("period").value === "custom", d = $("period").value === "day" || $("period").value === "week" || $("period").value === "month"; $("dateL").hidden = !d; $("fromL").hidden = $("toL").hidden = !c; openStore = null; render(); };
+fillSelect("fSd", "sd"); fillSelect("fRom", "rom"); fillSelect("fRm", "rm");
+refresh();
+</script>
+</body>
+</html>
