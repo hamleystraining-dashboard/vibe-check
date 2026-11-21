@@ -130,13 +130,19 @@ function cmp(a, b) {
   const g = { name: o => o.s.name.toLowerCase(), score: o => o.score ?? -1, x: o => o.x, code: o => o.s.code, sd: o => o.s.sd || "" }[sort.k] || (o => o.s.code);
   const A = g(a), B = g(b); return (A < B ? -1 : A > B ? 1 : 0) * sort.dir;
 }
+function reviewList() {   // borderline scores (within 10 points below to 5 above the pass mark): a manager should check these people in person
+  const [f, t] = range(), codes = new Map(stores().map(x => [x.code, x]));
+  const rv = data.records.filter(r => r.date >= f && r.date <= t && codes.has(r.code) && r.pct >= PASS - 10 && r.pct < PASS + 5).sort((a, b) => b.date.localeCompare(a.date) || a.pct - b.pct);
+  return `<h2>Needs in-person review <span style="font-weight:400;font-size:13px;color:var(--mute)">(scores ${PASS - 10}–${PASS + 4}%, close to the pass mark)</span></h2><div class="wrap"><table><thead><tr><th class="nosort">Date</th><th class="nosort">Store</th><th class="nosort">Name</th><th class="nosort">Designation</th><th class="nosort num">Score</th></tr></thead><tbody>`
+    + (rv.length ? rv.slice(0, 300).map(r => `<tr><td>${r.date}</td><td>${esc(codes.get(r.code).name)}</td><td>${esc(r.name)}</td><td>${dash(esc(r.role))}</td><td class="num">${pill(r.pct)}</td></tr>`).join("") : `<tr><td colspan="5" class="empty">No borderline scores in this period.</td></tr>`) + `</tbody></table></div>`;
+}
 function renderStores() {
   const rows = crunch(stores(), range()).sort(cmp); renderCards(rows);
   if (openStore) return renderPeople();
   const head = [["#", "", 1], ["Store Name", "name"], ["Grooming Score", "score"], ["Checked (X/Y)", "x"], ["Store Code", "code"], ["Store Director", "sd"], ["Status", "", 1]];
   $("view").innerHTML = `<h2>Stores</h2><div class="wrap"><table><thead><tr>${head.map(([t, k, ns]) => `<th class="${ns ? "nosort" : ""} ${t === "Grooming Score" || t.startsWith("Checked") ? "num" : ""}" ${k ? `data-k="${k}"` : ""}>${t}${sort.k === k ? (sort.dir > 0 ? " ▲" : " ▼") : ""}</th>`).join("")}</tr></thead><tbody>`
     + (rows.length ? rows.map((o, i) => `<tr><td>${i + 1}</td><td><button class="link" data-c="${o.s.code}">${esc(o.s.name)}</button></td><td class="num">${pill(o.score)}</td><td class="num">${o.x}/${o.y}</td><td>${o.s.code}</td><td>${dash(esc(o.s.sd))}</td><td>${status(o)}</td></tr>`).join("") : `<tr><td colspan="7" class="empty">No stores match these filters.</td></tr>`)
-    + `</tbody></table></div>`;
+    + `</tbody></table></div>` + reviewList();
   $("view").querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { sort = { k: th.dataset.k, dir: sort.k === th.dataset.k ? -sort.dir : (th.dataset.k === "score" ? -1 : 1) }; renderStores(); });
   $("view").querySelectorAll("button[data-c]").forEach(b => b.onclick = () => { openStore = b.dataset.c; renderStores(); window.scrollTo(0, 0); });
 }

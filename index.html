@@ -77,7 +77,7 @@ import { profile, consent, day, headcount, todayIST } from './js/db.js';
 import { STORES } from './data_stores.js';
 const PASS_PERCENT = 80, MAX_ATTEMPTS = 3;
 const $ = id => document.getElementById(id), show = (id, on = true) => $(id).classList.toggle('hidden', !on);
-const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.', multiple_people: 'Only one person should be in the photo. Please take your own photo and try again.' };
+const RETAKE = { face_not_clear: 'Your face is not clear. Stand closer, face the camera and try again.', body_cut_off: 'Please show your full body from head to toe, shoes included, and try again.', blurry: 'The photo is blurry. Hold steady and try again.', red_wall: 'The red wall behind you hides the red trim on your uniform, so the top cannot be checked. Please stand in front of a plain, non-red wall and try again.', multiple_people: 'Only one person should be in the photo. Please take your own photo and try again.' };
 
 let pickedStore = null;
 const storeLabel = s => `${s.name} (${s.code})`;
@@ -176,7 +176,7 @@ async function scorePhoto(c) {
   try {
     const h = await getHuman(), det = await h.detect(c), a = analyze(c, det, me.role, { female: me.gender === 'F' }); c.width = c.height = 0;
     if (a.retake) { $('status').textContent = ''; showRetake(RETAKE[a.retake]); return; }
-    const r = calculate(a.criteria, me.role); let pct = r.total / r.max * 100; if (r.topFail) pct = Math.min(pct, PASS_PERCENT - 0.01);     // wrong top = cannot pass
+    const r = calculate(a.criteria, me.role); let pct = r.total / r.max * 100; if (r.topFail || r.hairFail) pct = Math.min(pct, PASS_PERCENT - 0.01);     // wrong top = cannot pass
     const exp = PLAY_ROLES.includes(me.role) ? 'play' : 'retail', got = a.detected;
     const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
     const att = { role: me.role, total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
@@ -196,7 +196,7 @@ function showResult(att, d, lockedNoMore, r, mismatch) {
   $('attemptPill').textContent = `Attempt ${used} of ${MAX_ATTEMPTS} used`;
   show('result'); $('result').innerHTML = `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${att.total}/${att.max}</div>
    <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bestLine}${bars}
-   ${r && r.topFail ? '<div class="note">Your top does not match the uniform for your role, so this cannot be a pass. Please fix it and try again.</div>' : ''}${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
+   ${r && r.hairFail ? '<div class="note">Your grooming is not up to standard (hair neat and brushed, long hair tied back, beard trimmed with a clean neckline), so this cannot be a pass. Please fix it and try again.</div>' : ''}${r && r.topFail ? '<div class="note">Your top does not match the uniform for your role, so this cannot be a pass. Please fix it and try again.</div>' : ''}${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
    ${r ? '<div class="note"><b>Delete your photo first.</b> The photo stays only on your phone and must be deleted before you continue. Only your score is kept.</div><button class="btn alt" id="del">Delete my photo</button>' : ''}<p class="hint" id="delmsg"></p>
    ${!pass && left > 0 && !lockedNoMore ? `<button class="btn ghost" id="retry"${r ? ' disabled' : ''}>Try again (${left} left today)</button>` : ''}
    ${!pass && left <= 0 ? '<div class="note">You have used all 3 attempts for today.</div>' : ''}

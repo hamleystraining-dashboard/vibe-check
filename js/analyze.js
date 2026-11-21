@@ -78,6 +78,7 @@ export function analyze(canvas, human, designation, opt = {}) {
   // person mid x: use ankle/hip/shoulder midpoint
   const cx = ank.length ? (ank.reduce((a, k) => a + k.x, 0) / ank.length + hipX) / 2 : hipX;
   if (ankY > H * 0.985 || ankY - hipY < 0.9 * shW) { res.retake = "body_cut_off"; return res; }
+  m.headRatio = +(fH / (ankY - fb.y)).toFixed(3);
   Object.assign(m, { bu: Math.round(bu), shW: Math.round(shW), hipY: Math.round(hipY), ankY: Math.round(ankY) });
 
   const roleFamily = PLAY_ROLES.includes(designation) ? (designation === "Play Chief" ? "blazer" : "dungaree") : "retail";
@@ -89,17 +90,53 @@ export function analyze(canvas, human, designation, opt = {}) {
     const black = s.filter(p => p[5] < 0.32 || (p[5] < 0.52 && p[4] < 0.30)).length / s.length, red = s.filter(p => (p[3] < 20 || p[3] > 340) && p[4] > 0.5 && p[5] > 0.35).length / s.length;
     const grey = s.filter(p => p[4] < 0.34 && p[5] > 0.25 && p[5] < 0.82).length / s.length;
     m.top.black = +black.toFixed(2); m.top.red = +red.toFixed(2); m.top.grey = +grey.toFixed(2);
+    const other = s.filter(p => p[4] > 0.5 && p[5] > 0.35 && p[3] >= 25 && p[3] <= 335).length / s.length; m.top.other = +other.toFixed(3);   // colourful print that is not red
+    {   // ---- uniform signatures (what makes a top the approved Hamleys top, not just a red or black one)
+      const T_ = hipY - shY, isWhite = p => p[4] < 0.28 && p[5] > 0.72, isRed = p => (p[3] < 20 || p[3] > 340) && p[4] > 0.5 && p[5] > 0.35;
+      const frac = (r, pred, st = 2) => { const q = sample(r, st); return q.length ? q.filter(pred).length / q.length : 0; };
+      const blobs = (r, pred, st = 2) => { const w = Math.ceil((r.x1 - r.x0) / st), h = Math.ceil((r.y1 - r.y0) / st); if (w < 2 || h < 2) return []; const mk = new Uint8Array(w * h);
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const [R, G, B] = px(r.x0 + i * st, r.y0 + j * st); if (pred([R, G, B, ...rgb2hsv(R, G, B)])) mk[j * w + i] = 1; }
+        const out = []; for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (mk[j * w + i] === 1) { let n = 0, x0 = i, x1 = i, y0 = j, y1 = j; const stk = [[i, j]]; mk[j * w + i] = 2;
+          while (stk.length) { const [a, b] = stk.pop(); n++; x0 = Math.min(x0, a); x1 = Math.max(x1, a); y0 = Math.min(y0, b); y1 = Math.max(y1, b);
+            for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const a2 = a + di, b2 = b + dj; if (a2 >= 0 && b2 >= 0 && a2 < w && b2 < h && mk[b2 * w + a2] === 1) { mk[b2 * w + a2] = 2; stk.push([a2, b2]); } } }
+          out.push({ n, w: (x1 - x0 + 1) * st, h: (y1 - y0 + 1) * st }); } return out; };
+      const chest = region(shX - 0.32 * shW, shY + 0.18 * T_, shX + 0.32 * shW, shY + 0.62 * T_, "chestMark", "#fff");
+      m.top.whiteChest = +frac(chest, isWhite).toFixed(3);
+      m.top.sleeveRed = ["left", "right"].map(sd => { const a = kp[sd + "Shoulder"], e = kp[sd + "Elbow"]; if (!a || !e || e.s < 0.15) return null;
+        const cx = a.x + (e.x - a.x) * 0.55, cy = a.y + (e.y - a.y) * 0.55; return +frac(region(cx - 0.4 * bu, cy - 0.4 * bu, cx + 0.4 * bu, cy + 0.4 * bu, sd + "Sleeve", "#f60"), isRed).toFixed(3); });
+      const enclosed = r => { const st = 2, w = Math.ceil((r.x1 - r.x0) / st), h = Math.ceil((r.y1 - r.y0) / st); if (w < 4 || h < 4) return 0; const mk = new Uint8Array(w * h); let tot = 0;
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const [R, G, B] = px(r.x0 + i * st, r.y0 + j * st); if (isRed([R, G, B, ...rgb2hsv(R, G, B)])) { mk[j * w + i] = 1; tot++; } }
+        const stk = []; for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if ((i === 0 || j === 0 || i === w - 1 || j === h - 1) && mk[j * w + i] === 1) { mk[j * w + i] = 2; stk.push([i, j]); }
+        while (stk.length) { const [a_, b_] = stk.pop(); for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const x = a_ + di, y = b_ + dj; if (x >= 0 && y >= 0 && x < w && y < h && mk[y * w + x] === 1) { mk[y * w + x] = 2; stk.push([x, y]); } } }
+        let enc = 0; for (let k = 0; k < mk.length; k++) if (mk[k] === 1) enc++; return enc / (w * h); };
+      m.top.sleeveEnc = ["left", "right"].map(sd => { const a2 = kp[sd + "Shoulder"], e = kp[sd + "Elbow"]; if (!a2 || !e || e.s < 0.15) return null;
+        const cx = a2.x + (e.x - a2.x) * 0.55, cy = a2.y + (e.y - a2.y) * 0.55; return +enclosed(region(cx - 0.4 * bu, cy - 0.4 * bu, cx + 0.4 * bu, cy + 0.4 * bu, sd + "SleeveE", "#f60")).toFixed(3); });
+      const cw = region(shX - 0.5 * shW, shY + 0.1 * T_, shX + 0.5 * shW, shY + 0.55 * T_, "chestWide", "#fa0");
+      m.top.redBlobs = blobs(cw, isRed).filter(b => b.n >= 3).sort((a, b) => b.n - a.n).slice(0, 4).map(b => [+(b.w / shW).toFixed(2), +(b.h / shW).toFixed(2), b.n]);
+      const bib = region(shX - 0.3 * shW, shY + 0.3 * T_, shX + 0.3 * shW, shY + 0.7 * T_, "bib", "#0a0");
+      m.top.bibGrey = +frac(bib, p => p[4] < 0.34 && p[5] > 0.25 && p[5] < 0.82).toFixed(3); m.top.bibSat = +frac(bib, p => p[4] > 0.45 && p[5] > 0.3).toFixed(3);
+      m.top.sideGrey = +(frac(region(shX - 0.62 * shW, shY + 0.3 * T_, shX - 0.36 * shW, shY + 0.9 * T_, "jL", "#08f"), p => p[4] < 0.34 && p[5] > 0.25 && p[5] < 0.82) + frac(region(shX + 0.36 * shW, shY + 0.3 * T_, shX + 0.62 * shW, shY + 0.9 * T_, "jR", "#08f"), p => p[4] < 0.34 && p[5] > 0.25 && p[5] < 0.82)).toFixed(3) / 2;
+      m.top.bgRed = +((frac(region(shX - 1.15 * shW, shY + 0.1 * T_, shX - 0.78 * shW, shY + 0.6 * T_, "bgL", "#c00"), isRed) + frac(region(shX + 0.78 * shW, shY + 0.1 * T_, shX + 1.15 * shW, shY + 0.6 * T_, "bgR", "#c00"), isRed)) / 2).toFixed(3);
+      m.top.redStrip = +frac(region(shX - 0.1 * shW, shY + 0.1 * T_, shX + 0.1 * shW, shY + 0.7 * T_, "strip", "#f08"), isRed).toFixed(3);
+    }
     let detected = "unclear";
     if (black > 0.45) detected = "polo"; else if (grey > 0.35) detected = (red > 0.04 ? "dungaree" : "blazer"); else if (red > 0.45) detected = "dungaree";
     res.detected = detected;
     let pass = true, reason = "";
     if (roleFamily === "retail") {
-      const redPolo = (designation === "Fun Consultant" || designation === "Section Supervisor") && red > 0.40;      // red Hamleys T-shirt: approved for these two roles
-      if (redPolo) res.detected = "polo";
-      else if (black < 0.45) { pass = false; reason = "wrong_top"; } }
+      const t = m.top, sl = Math.max(t.sleeveRed[0] || 0, t.sleeveRed[1] || 0), bigMark = t.whiteChest >= 0.07;
+      const smallLogo = t.redBlobs.some(b => b[2] >= 10 && b[0] >= 0.04 && b[0] <= 0.35 && b[1] <= 0.14);
+      const bodyBlack = black >= 0.45, bodyRed = red > 0.40 && other < 0.04;
+      if (designation === "DySM" || designation === "Store Manager") {      // plain black full-sleeve shirt, small red Hamleys script on the chest
+        if (!(black >= 0.6 && !bigMark && sl < 0.06 && smallLogo)) { if (t.bgRed >= 0.5 && !opt.noRedWall) { res.retake = "red_wall"; return res; } pass = false; reason = "wrong_top"; } }
+      else {      // approved: varsity polo, or red/black polo with the large white Hamleys script
+        const script = bigMark && (bodyBlack || bodyRed);
+        const varsity = bodyBlack && sl >= 0.065 && t.redBlobs.length >= 2 && (t.redStrip >= 0.01 || Math.max(t.sleeveEnc[0] || 0, t.sleeveEnc[1] || 0) >= 0.03);      // red must sit ON the garment (placket or enclosed sleeve numerals), not be a red wall behind it
+        if (script && bodyRed) res.detected = "polo";
+        if (!(script || varsity)) { if (bodyBlack && t.bgRed >= 0.5 && !opt.noRedWall) { res.retake = "red_wall"; return res; } pass = false; reason = "wrong_top"; } } }
     else if (roleFamily === "dungaree") { const rr = region(shX - shW * 0.5, shY + 0.1 * bu, shX + shW * 0.5, shY + 0.7 * bu, "tee", "#f80"); const s2 = sample(rr);
-      const rd = s2.filter(p => (p[3] < 22 || p[3] > 338) && p[4] > 0.45 && p[5] > 0.3).length / s2.length; m.top.tee = +rd.toFixed(2); if (rd < 0.08 || grey < 0.2) { pass = false; reason = "wrong_top"; } }
-    else { if (grey < 0.25 && red < 0.08) { pass = false; reason = "wrong_top"; } }
+      const rd = s2.filter(p => (p[3] < 22 || p[3] > 338) && p[4] > 0.45 && p[5] > 0.3).length / s2.length; m.top.tee = +rd.toFixed(2); if (rd < 0.08 || grey < 0.2 || m.top.bibGrey < 0.4) { pass = false; reason = "wrong_top"; } }
+    else { if ((grey < 0.25 && red < 0.08) || m.top.sideGrey < 0.4 || m.top.redStrip < 0.3) { pass = false; reason = "wrong_top"; } }
     res.criteria.top = { pass, reason };
   }
 
@@ -178,7 +215,11 @@ export function analyze(canvas, human, designation, opt = {}) {
     m.belt = { brown: +brown.toFixed(3) };
     const mid = sample(region(hipX - hipW * 0.5, hipY - 0.45 * bu, hipX + hipW * 0.5, hipY + 0.05 * bu, "beltMid", "#fc0"), 2);
     const skinPx = mid.filter(p => p[3] >= 5 && p[3] <= 38 && p[4] >= 0.18 && p[4] <= 0.75 && p[5] >= 0.30).length / mid.length; m.belt.skin = +skinPx.toFixed(2);
-    res.criteria.belt = brown > 0.08 ? { pass: false, reason: "brown" } : skinPx > 0.22 ? { pass: false, reason: "missing" } : { pass: true, reason: "" };
+    { // a belt shows as a dark horizontal band across the waist
+      const bx0 = hipX - hipW * 0.45, bx1 = hipX + hipW * 0.45; let run = 0, best = 0, bestFrac = 0;
+      for (let y = hipY - 0.45 * bu; y <= hipY + 0.12 * bu; y += 2) { let d = 0, n = 0; for (let x = bx0; x <= bx1; x += 3) { n++; if (Math.max(...px(x, y)) / 255 < 0.32) d++; } const f = n ? d / n : 0; if (f >= 0.6) { run += 2; best = Math.max(best, run); } else run = 0; bestFrac = Math.max(bestFrac, f); }
+      m.belt.band = +(best / bu).toFixed(3); m.belt.bandMax = +bestFrac.toFixed(2); }
+    res.criteria.belt = brown > 0.08 ? { pass: false, reason: "brown" } : (skinPx > 0.22 || m.belt.band < 0.04) ? { pass: false, reason: "missing" } : { pass: true, reason: "" };
   }
 
   // ---------------------------------------------------------------- FOOTWEAR
@@ -209,6 +250,10 @@ export function analyze(canvas, human, designation, opt = {}) {
     m.foot = { blackFrac: +blackFrac.toFixed(2), withSole: +(blackS + brightS ? blackS / (blackS + brightS) : 0).toFixed(2), darkArea: +darkArea.toFixed(3) };
     const sockR = region(Math.min(...xs) - 0.12 * bu, ankY + 0.12 * bu, Math.max(...xs) + 0.12 * bu, ankY + 0.55 * bu, "socks", "#0cf");
     const sst = stat(sample(sockR, 2)); m.foot.sock = { h: Math.round(sst.h), s: +sst.s.toFixed(2), v: +sst.v.toFixed(2) };
+    { let fs = []; for (const ax of xs) fs = fs.concat(sample(region(ax - 0.45 * bu, ankY - 0.05 * bu, ax + 0.45 * bu, Math.min(H - 1, ankY + 0.9 * bu), "footskin", "#0f0"), 2));
+      m.foot.skin = +(fs.filter(p => p[3] >= 5 && p[3] <= 40 && p[4] >= 0.15 && p[4] <= 0.75 && p[5] >= 0.30).length / Math.max(1, fs.length)).toFixed(3); }
+    { let pd = [], ps = []; for (const ax of xs) { const q = sample(region(ax - 0.25 * bu, ankY + 0.10 * bu, ax + 0.25 * bu, Math.min(H - 1, ankY + 0.55 * bu), "ankPatch", "#0ff"), 2); pd = pd.concat(q); }
+      m.foot.patchDark = +(pd.filter(p => p[5] < 0.30).length / Math.max(1, pd.length)).toFixed(3); m.foot.patchWhite = +(pd.filter(p => p[4] < 0.15 && p[5] > 0.7).length / Math.max(1, pd.length)).toFixed(3); m.foot.patchSkin = +(pd.filter(p => p[3] >= 5 && p[3] <= 40 && p[4] >= 0.15 && p[4] <= 0.75 && p[5] >= 0.30).length / Math.max(1, pd.length)).toFixed(3); }
     const hasShoes = darkArea > 0.05 && darkPx > 120;
     let pass = true, reason = "";
     const shoeGrade = () => blackFrac >= T.shoeBlackPass ? "" : blackFrac >= T.shoeBlack1 ? "too_much_white" : blackFrac >= T.shoeBlack2 ? "half_black" : "not_black";
@@ -217,7 +262,8 @@ export function analyze(canvas, human, designation, opt = {}) {
       if (sst.v < 0.25) return "socks_not_grey"; if (whiteLike) return "socks_not_grey"; if (skinLike) return "no_socks"; if (sst.s > 0.5) return "socks_not_grey"; return "";
     };
     if (roleFamily === "retail") {
-      if (!hasShoes) { pass = false; reason = darkArea > 0.01 ? "not_black" : "no_shoes"; }
+      if (m.foot.patchSkin >= 0.35 && m.foot.patchDark < 0.30) { pass = false; reason = m.foot.patchWhite >= 0.25 ? "not_black" : "no_shoes"; }      // bare feet or sandals: skin at the ankles, no dark shoe
+      else if (!hasShoes) { pass = false; reason = darkArea > 0.01 ? "not_black" : "no_shoes"; }
       else { const g = shoeGrade(); if (g) { pass = false; reason = g; } }
     } else {      // Play Pal, Play Wiz and Play Chief: grey socks only, no shoes
       if (hasShoes) { pass = false; reason = "shoes_not_allowed"; } else { const g = sockGrade(); if (g) { pass = false; reason = g; } }
@@ -257,12 +303,22 @@ export function analyze(canvas, human, designation, opt = {}) {
       miss = 0; for (let x = cxh; x < W && miss < 8; x += 2) { if (dk(x)) { r2 = x; miss = 0; } else miss += 2; }
       widths.push((r2 - l) / fb.w);
     }
+    { const hs = sample(hr, 2); m.face.hairArea = +(hs.filter(p => p[5] < 0.26).length * 4 / (fb.w * fb.h)).toFixed(2);
+      const fr = sample(region(fb.x + fb.w * 0.15, fb.y - fb.h * 0.02, fb.x + fb.w * 0.85, fb.y + fb.h * 0.22, "fringe", "#f3f"), 2); m.face.fringe = +(fr.filter(p => p[5] < 0.26).length / Math.max(1, fr.length)).toFixed(2);
+      const up = sample(region(fb.x - fb.w * 0.2, fb.y - fb.h * 0.7, fb.x + fb.w * 1.2, fb.y - fb.h * 0.1, "crown", "#f3f"), 2); m.face.crown = +(up.filter(p => p[5] < 0.26).length / Math.max(1, up.length)).toFixed(2); }
+    { const sd = (x0, x1) => { const q = sample(region(x0, fb.y + fb.h * 0.55, x1, fb.y + fb.h * 1.0, "neckSide", "#f3f"), 2); return q.length ? q.filter(p => p[5] < 0.26).length / q.length : 0; };
+      m.face.sideHair = [+sd(fb.x - fb.w * 0.4, fb.x + fb.w * 0.02).toFixed(2), +sd(fb.x + fb.w * 0.98, fb.x + fb.w * 1.4).toFixed(2)]; }
+    { const nk = (x0, x1) => { const q = sample(region(x0, fb.y + fb.h * 1.08, x1, fb.y + fb.h * 1.4, "neckLow", "#f3f"), 2); return q.length ? q.filter(p => p[5] < 0.26).length / q.length : 0; };
+      m.face.neckLow = [+nk(fb.x - fb.w * 0.3, fb.x + fb.w * 0.2).toFixed(2), +nk(fb.x + fb.w * 0.8, fb.x + fb.w * 1.3).toFixed(2)]; }
+    { const bn = (y0, y1) => { const q = sample(region(fb.x + fb.w * 0.2, fb.y + fb.h * y0, fb.x + fb.w * 0.8, fb.y + fb.h * y1, "beardNeck", "#f3f"), 2); return q.length ? q.filter(p => p[5] < 0.30).length / q.length : 0; };
+      m.face.neckBeard = [+bn(0.9, 1.05).toFixed(2), +bn(1.05, 1.2).toFixed(2)]; }
     m.face.hairW = widths.map(w => +w.toFixed(2)); m.face.turban = turban;
     const hairW = Math.max(...widths);
-    if (!turban && !opt.female && hairW > T.hairVolume) reasons.push("hair_unkempt");
+    if (!turban && opt.female && Math.min(...m.face.sideHair) >= 0.5) reasons.push("hair_not_tied");      // loose hair framing both sides of the jaw (calibrated on one example: needs female photos to tune)
+    if (!turban && !opt.female && (hairW > T.hairVolume || m.face.fringe >= 0.5)) reasons.push("hair_unkempt");      // fringe >= 0.5: hair falling over the forehead (calibrated on one messy example)
     const lowFace = sample(region(fb.x + fb.w * 0.25, fb.y + fb.h * 0.62, fb.x + fb.w * 0.75, fb.y + fb.h * 0.95, "lowface", "#f33"), 2);
     const facialHair = lowFace.filter(p => p[5] < 0.30).length / lowFace.length; m.face.facialHair = +facialHair.toFixed(2);
-    if (facialHair > 0.30 && beardBelow > T.beardNeck) reasons.push("beard_neck");
+    if (facialHair > 0.30 && (beardBelow > T.beardNeck || m.face.neckBeard[1] >= 0.35)) reasons.push("beard_neck");      // dark hair continuing onto the neck below the face box (calibrated on two examples)
     res.criteria.face_hair = { pass: reasons.length === 0, reasons };
   }
 

@@ -46,7 +46,7 @@ export function reasonTable(d, c) {
   if (c === "footwear") return PLAY_ROLES.includes(d) ? FOOT_PAL : FOOT_RETAIL;
   if (c === "face_hair") {
     const allowed = new Set(["hair_unkempt", "beard_neck", "beard_unkempt", "other"]);
-    if (PLAY_ROLES.includes(d)) allowed.add("hair_not_tied");
+    allowed.add("hair_not_tied");      // all roles: female staff with long hair must tie it back; short open hair is fine
     if (d === "Play Chief") allowed.add("makeup_missing");
     return Object.fromEntries(Object.entries(FACE).filter(([k]) => allowed.has(k)));
   }
@@ -75,5 +75,5 @@ export function calculate(criteria, d) {
     scores[c] = mx - lost; maxes[c] = mx; pass[c] = lost === 0;
   }
   const total = Object.values(scores).reduce((a, b) => a + b, 0), max = Object.values(maxes).reduce((a, b) => a + b, 0);
-  return { total, max, scores, maxes, pass, feedback, topFail: applies(d).includes("top") && scores.top === 0 };
+  return { total, max, scores, maxes, pass, feedback, topFail: applies(d).includes("top") && scores.top === 0, hairFail: feedback.some(f => f.criterion === "face_hair" && (f.code === "hair_unkempt" || f.code === "hair_not_tied" || f.code === "beard_neck" || f.code === "beard_unkempt")) };
 }
