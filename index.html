@@ -155,7 +155,12 @@ $('camIn').onchange = async e => {      // fallback: the phone's camera app (the
   const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' }), sc = Math.min(1, 1280 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas');
   c.width = Math.round(bmp.width * sc); c.height = Math.round(bmp.height * sc); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); bmp.close?.(); await scorePhoto(c);
 };
-function clearStill() { const s = $('still'); s.width = s.height = 0; show('still', false); }
+let photoOn = false;
+function clearStill() { const s = $('still'); s.width = s.height = 0; show('still', false); photoOn = false; }
+// the photo never leaves this phone; it is also wiped the moment the app is hidden or closed
+addEventListener('pagehide', clearStill);
+document.addEventListener('visibilitychange', () => { if (document.hidden && photoOn) { clearStill(); const m = $('delmsg'); if (m) m.textContent = 'Photo deleted. Only your score stays.'; const d = $('del'); if (d) d.disabled = true; ['retry', 'done'].forEach(i => { const b = $(i); if (b) b.disabled = false; }); } });
+addEventListener('beforeunload', e => { if (photoOn) { e.preventDefault(); e.returnValue = ''; } });
 
 async function getHuman() {
   if (human) return human;
@@ -176,7 +181,7 @@ async function scorePhoto(c) {
     const mismatch = (exp === 'play' && got === 'polo') || (exp === 'retail' && (got === 'dungaree' || got === 'blazer'));
     const att = { role: me.role, total: r.total, max: r.max, pct, reasons: r.feedback.map(f => f.code), at: new Date().toISOString() };
     const d = day.addAttempt(me.store, me.name, att);
-    $('status').textContent = ''; showResult(att, d, false, r, mismatch);
+    $('status').textContent = ''; photoOn = true; showResult(att, d, false, r, mismatch);
   } catch (e) { console.error(e); $('status').textContent = ''; showRetake('Scoring is busy. Please try again in a moment.'); }
 }
 function showRetake(msg) {
@@ -192,13 +197,13 @@ function showResult(att, d, lockedNoMore, r, mismatch) {
   show('result'); $('result').innerHTML = `<img class="bear" src="assets/bear.png" alt="Hamleys bear"><div class="score ${pass ? 'ok' : 'bad'}">${att.total}/${att.max}</div>
    <p style="text-align:center;margin:0"><b>${pass ? 'You passed! Looking great.' : 'Not quite there yet.'}</b> Pass mark is ${PASS_PERCENT}%.</p>${bestLine}${bars}
    ${r && r.topFail ? '<div class="note">Your top does not match the uniform for your role, so this cannot be a pass. Please fix it and try again.</div>' : ''}${mismatch ? `<div class="note">The uniform in your photo may not match the designation you picked (${me.role}). Please confirm you chose the right designation. Your score is not changed.</div>` : ''}
-   ${!pass && left > 0 && !lockedNoMore ? `<button class="btn ghost" id="retry">Try again (${left} left today)</button>` : ''}
+   ${r ? '<div class="note"><b>Delete your photo first.</b> The photo stays only on your phone and must be deleted before you continue. Only your score is kept.</div><button class="btn alt" id="del">Delete my photo</button>' : ''}<p class="hint" id="delmsg"></p>
+   ${!pass && left > 0 && !lockedNoMore ? `<button class="btn ghost" id="retry"${r ? ' disabled' : ''}>Try again (${left} left today)</button>` : ''}
    ${!pass && left <= 0 ? '<div class="note">You have used all 3 attempts for today.</div>' : ''}
-   <button class="btn green" id="done">Done for the day</button>
-   ${r ? '<button class="btn alt" id="del">Delete my photo</button>' : ''}<p class="hint" id="delmsg"></p>`;
+   <button class="btn green" id="done"${r ? ' disabled' : ''}>Done for the day</button>`;
   const rt = $('retry'); if (rt) rt.onclick = () => { clearStill(); $('result').classList.add('hidden'); show('cap'); $('openCam').click(); };
   $('done').onclick = () => { stopCam(); const dd = day.finish(me.store, me.name); showDone(dd); };
-  const del = $('del'); if (del) del.onclick = () => { clearStill(); $('delmsg').textContent = 'Photo deleted. Only your score stays.'; del.disabled = true; };
+  const del = $('del'); if (del) del.onclick = () => { clearStill(); $('delmsg').textContent = 'Photo deleted. Only your score stays.'; del.disabled = true; ['retry', 'done'].forEach(i => { const b = $(i); if (b) b.disabled = false; }); };
   $('result').scrollIntoView({ behavior: 'smooth' });
 }
 
